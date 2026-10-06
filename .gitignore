@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+*.pid
+*.tmp
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+miniprogram/project.private.config.json
+data/cfets-history-cache.json
+*-preview.jpg
+*-preview.png

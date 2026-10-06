@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "全球市场行情台",
+    "navigationBarBackgroundColor": "#0c0f14",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#090b0f",
+    "backgroundTextStyle": "dark"
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

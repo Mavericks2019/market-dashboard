@@ -1,0 +1,9 @@
+{
+  "desc": "行情首页可被索引",
+  "rules": [
+    {
+      "action": "allow",
+      "page": "pages/index/index"
+    }
+  ]
+}

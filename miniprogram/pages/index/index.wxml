@@ -1,0 +1,110 @@
+<view class="page">
+  <view class="status-bar">
+    <view class="brand-row">
+      <view class="brand-mark">M</view>
+      <view>
+        <view class="brand-title">全球市场行情台</view>
+        <view class="brand-subtitle">GLOBAL MARKETS</view>
+      </view>
+    </view>
+    <button class="refresh-button {{refreshing ? 'rotating' : ''}}" bindtap="handleRefresh" disabled="{{refreshing}}" aria-label="立即刷新">↻</button>
+  </view>
+
+  <view class="session-row">
+    <view class="session-state"><view class="status-dot {{sessionTone}}"></view>{{sessionLabel}}</view>
+    <view class="clock">北京时间 {{chinaTime}}</view>
+  </view>
+
+  <view class="feed-row">
+    <view>
+      <view class="eyebrow">指数期货 · 现货指数 · 贵金属</view>
+      <view class="section-title">主要市场</view>
+    </view>
+    <view class="feed-state {{error ? 'warning' : ''}}">{{error || delayLabel}}</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-list">
+    <view class="skeleton"></view>
+    <view class="skeleton"></view>
+    <view class="skeleton"></view>
+  </view>
+
+  <view wx:elif="{{markets.length}}" class="market-list">
+    <button
+      wx:for="{{markets}}"
+      wx:key="key"
+      class="market-card {{activeKey === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="selectMarket"
+    >
+      <view class="market-top">
+        <view class="ticker-row">
+          <text class="ticker">{{item.key}}</text>
+          <text class="contract">{{item.contract}}</text>
+        </view>
+        <view class="direction {{item.positive ? 'up' : 'down'}}">{{item.positive ? '上涨' : '下跌'}}</view>
+      </view>
+      <view class="price">{{item.priceText}}</view>
+      <view class="change {{item.positive ? 'up-text' : 'down-text'}}">
+        <text>{{item.changeText}}</text>
+        <text>{{item.changePercentText}}</text>
+      </view>
+      <view class="range">
+        <text>低 {{item.lowText}}</text>
+        <text>高 {{item.highText}}</text>
+      </view>
+    </button>
+  </view>
+
+  <view wx:else class="empty-state">
+    <view class="empty-title">暂时无法获取行情</view>
+    <view class="empty-message">{{error}}</view>
+    <button class="retry-button" bindtap="handleRefresh">重新连接</button>
+  </view>
+
+  <view wx:if="{{activeMarket}}" class="chart-section">
+    <view class="chart-heading">
+      <view>
+        <view class="chart-symbol">{{activeMarket.symbol}} · {{activeMarket.exchange}}</view>
+        <view class="chart-title">{{activeMarket.name}}走势</view>
+      </view>
+      <view class="period-control">
+        <button
+          wx:for="{{periods}}"
+          wx:key="value"
+          class="period-button {{period === item.value ? 'selected' : ''}}"
+          data-period="{{item.value}}"
+          bindtap="selectPeriod"
+        >{{item.label}}</button>
+      </view>
+    </view>
+
+    <view class="metrics">
+      <view class="metric"><text>最新</text><text class="metric-value">{{activeMarket.priceText}}</text></view>
+      <view class="metric"><text>前收</text><text class="metric-value">{{activeMarket.previousCloseText}}</text></view>
+      <view class="metric"><text>日内区间</text><text class="metric-value">{{activeMarket.lowText}} – {{activeMarket.highText}}</text></view>
+      <view class="metric"><text>行情时间</text><text class="metric-value">{{activeMarket.timeText}}</text></view>
+    </view>
+
+    <view class="chart-wrap">
+      <canvas
+        id="trendCanvas"
+        type="2d"
+        class="trend-canvas"
+        bindtouchstart="handleChartTouch"
+        bindtouchmove="handleChartTouch"
+        bindtouchend="clearChartTouch"
+      ></canvas>
+      <view wx:if="{{activeMarket.points.length < 2}}" class="chart-empty">该时间范围暂无趋势数据</view>
+      <view wx:if="{{hoverPoint}}" class="chart-tooltip">
+        <text>{{hoverPoint.timeText}}</text>
+        <text class="tooltip-price">{{hoverPoint.priceText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="footer">
+    <text>{{feedName || '公开行情'}} · 延迟未知</text>
+    <text>仅供信息参考，不构成投资建议</text>
+  </view>
+</view>

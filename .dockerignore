@@ -1,0 +1,13 @@
+node_modules
+dist
+miniprogram
+.git
+npm-debug.log
+*.log
+*.pid
+*.tmp
+*.tsbuildinfo
+.env*
+*-preview.jpg
+*-preview.png
+data/cfets-history-cache.json

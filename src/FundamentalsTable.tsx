@@ -1,0 +1,93 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
+import { formatChinaTime } from './marketTime'
+import type { FundamentalRow, FundamentalsResponse, Market } from './types'
+
+function metric(value: number | null | undefined, unit: string, isPe = false) {
+  if (value == null || !Number.isFinite(value)) return '暂无'
+  if (isPe && value <= 0) return '不适用'
+  return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${unit}`
+}
+
+export default function FundamentalsTable({ companies }: { companies: Market[] }) {
+  const [data, setData] = useState<FundamentalsResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const activeRequest = useRef<AbortController | null>(null)
+
+  const load = useCallback(async () => {
+    activeRequest.current?.abort()
+    const controller = new AbortController()
+    activeRequest.current = controller
+    setLoading(true)
+    const timeout = window.setTimeout(() => controller.abort(), 30_000)
+    try {
+      const response = await fetch('/api/fundamentals', { signal: controller.signal, cache: 'no-store' })
+      const body = await response.json()
+      if (!response.ok || !Array.isArray(body.rows)) throw new Error(body.error || '估值数据暂不可用')
+      if (controller !== activeRequest.current) return
+      setData(body)
+      setError('')
+    } catch (reason) {
+      if (controller !== activeRequest.current) return
+      setError(reason instanceof Error && reason.name !== 'AbortError' ? reason.message : '估值数据请求超时，稍后重试')
+    } finally {
+      window.clearTimeout(timeout)
+      if (controller === activeRequest.current) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+    const timer = window.setInterval(load, 5 * 60_000)
+    return () => {
+      window.clearInterval(timer)
+      activeRequest.current?.abort()
+      activeRequest.current = null
+    }
+  }, [load])
+
+  const rows: FundamentalRow[] = data?.rows ?? companies.map((company) => ({
+    key: company.key, symbol: company.symbol, name: company.name, englishName: company.englishName,
+    pe: null, ps: null, dividendYield: null, marketTime: null,
+  }))
+
+  return (
+    <section className="fundamentals-panel" aria-labelledby="fundamentals-title" aria-busy={loading}>
+      <div className="section-heading">
+        <div><p className="eyebrow">COMPANY VALUATION</p><h2 id="fundamentals-title">关注企业估值</h2></div>
+        <div className="valuation-refresh">
+          <span>{loading ? '正在更新…' : `每5分钟检查${data ? ` · ${formatChinaTime(data.asOf)}` : ''}`}</span>
+          <button className="icon-button" onClick={load} disabled={loading} aria-label="刷新企业估值" title="刷新企业估值"><RefreshCw size={16} className={loading ? 'spin' : ''} /></button>
+        </div>
+      </div>
+      {error && <p className="valuation-warning" role="status">{error}{data ? '，保留上次结果。' : '。'}</p>}
+      <div className="valuation-scroll" role="region" aria-label="企业估值表，可横向滚动" tabIndex={0}>
+        <table className="valuation-table">
+          <thead><tr>
+            <th scope="col">企业 / 股票代码</th>
+            <th scope="col">市盈率 <span>P/E</span></th>
+            <th scope="col">市销率 <span>P/S</span></th>
+            <th scope="col">股息率 <span>Dividend yield</span></th>
+            <th scope="col">估值日期 / 财报期 / 来源</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((row) => <tr key={row.key}>
+              <th scope="row"><strong>{row.name}</strong><small>{row.englishName} · {row.symbol}</small>{row.note && <details className="valuation-details"><summary>口径说明</summary><span className="valuation-note">{row.note}</span></details>}</th>
+              <td><strong>{metric(row.pe, ' 倍', true)}</strong>{row.peBasis && <small>{row.peBasis}</small>}</td>
+              <td><strong>{metric(row.ps, ' 倍')}</strong>{row.psBasis && <small>{row.psBasis}</small>}</td>
+              <td><strong>{metric(row.dividendYield, '%')}</strong>{row.dividendBasis && <small>{row.dividendBasis}</small>}</td>
+              <td className="valuation-source"><span>{row.valuationDate || (row.marketTime ? formatChinaTime(row.marketTime, true) : '估值日期未披露')}</span>
+                {row.reportDate && <small>财报期 {row.reportDate}</small>}
+                {row.sourceUrl ? <a href={row.sourceUrl} target="_blank" rel="noreferrer">{row.sourceName || '查看来源'}</a> : <small>{row.sourceName || '等待数据源'}</small>}
+                {(row.isStale || error) && <small className="valuation-warning">更新暂不可用 · 上次结果</small>}
+              </td>
+            </tr>)}
+            {!rows.length && <tr><td colSpan={5}>{loading ? '正在加载企业估值…' : '暂无企业估值数据'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <p className="valuation-explainer">市盈率 = 股价 / 每股盈利；市销率 = 市值 / 营业收入；股息率 = 每股年度股息 / 股价。TTM 表示过去12个月，具体口径见各项标注。“暂无”表示数据缺失，0.00% 表示来源明确披露为零。</p>
+    </section>
+  )
+}
