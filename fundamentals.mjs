@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT = 8_000
 export const FUNDAMENTAL_INSTRUMENTS = [
   { key: 'BRKB', symbol: 'BRK.B', secucode: 'BRK_B.N', name: '伯克希尔哈撒韦B', englishName: 'Berkshire Hathaway B', region: 'US', insurance: true },
   { key: 'GOOGL', symbol: 'GOOGL', secucode: 'GOOGL.O', name: '谷歌A类股', englishName: 'Alphabet Class A', region: 'US' },
+  { key: 'NVDA', symbol: 'NVDA', secucode: 'NVDA.O', name: '英伟达', englishName: 'NVIDIA', region: 'US' },
   { key: 'SPCX', symbol: 'SPCX', secucode: 'SPCX.O', name: 'SpaceX', englishName: 'SpaceX Class A', region: 'US' },
   { key: 'KO', symbol: 'KO', secucode: 'KO.N', name: '可口可乐', englishName: 'The Coca-Cola Company', region: 'US' },
   { key: 'MCD', symbol: 'MCD', secucode: 'MCD.N', name: '麦当劳', englishName: "McDonald's Corporation", region: 'US' },
@@ -51,9 +52,25 @@ function previousYear(date) {
   return `${Number(date.slice(0, 4)) - 1}${date.slice(4)}`
 }
 
+function periodLength(row) {
+  const start = dateOnly(row.START_DATE)
+  const end = dateOnly(row.REPORT_DATE)
+  return start && end ? (Date.parse(end) - Date.parse(start)) / 86_400_000 + 1 : NaN
+}
+
+function isCumulativePeriod(row, reportDate) {
+  const quarter = reportDate.slice(5)
+  const bounds = { '03-31': [75, 105], '06-30': [165, 200], '09-30': [255, 295], '12-31': [350, 380] }[quarter]
+  const typeMatches = quarter === '12-31' ? row.DATE_TYPE === '年报'
+    : row.DATE_TYPE === '累计季报' || (quarter === '03-31' && row.DATE_TYPE === '单季报')
+  const days = periodLength(row)
+  return bounds && typeMatches && days >= bounds[0] && days <= bounds[1]
+}
+
 /** TTM = latest YTD + previous full year - comparable previous YTD.
  * Only complete, aligned periods of this security in one currency are accepted.
- * Source-standardized periods account for fiscal ends offset by a few days.
+ * Source-standardized periods identify matching fiscal quarters. Actual start/end
+ * dates verify consecutive fiscal years, including 52/53-week years such as NVIDIA.
  * No extrapolation or use of single-quarter rows as cumulative periods.
  */
 export function calculateTrailingRevenue(rows, { secucode, reportDate, revenueField, currencyCode = 'USD' }) {
@@ -62,18 +79,20 @@ export function calculateTrailingRevenue(rows, { secucode, reportDate, revenueFi
   const valid = rows.filter((row) => row.SECUCODE === secucode
     && currency(row) === currencyCode && positive(row[revenueField]) !== null)
   const current = valid.find((row) => reportPeriodDate(row) === reportDate
-    && dateOnly(row.START_DATE) === `${year}-01-01`
-    && (row.DATE_TYPE === '年报' || row.DATE_TYPE === '累计季报' || reportDate.endsWith('-03-31')))
+    && isCumulativePeriod(row, reportDate))
   if (!current) return null
   if (reportDate.endsWith('-12-31') && current.DATE_TYPE === '年报') return numeric(current[revenueField])
   const priorYear = Number(year) - 1
   const annual = valid.find((row) => row.DATE_TYPE === '年报'
     && reportPeriodDate(row) === `${priorYear}-12-31`
-    && dateOnly(row.START_DATE) === `${priorYear}-01-01`)
+    && isCumulativePeriod(row, `${priorYear}-12-31`)
+    && Date.parse(dateOnly(current.START_DATE)) - Date.parse(dateOnly(row.REPORT_DATE)) === 86_400_000)
+  if (!annual) return null
   const comparable = valid.find((row) => reportPeriodDate(row) === previousYear(reportDate)
-    && dateOnly(row.START_DATE) === `${priorYear}-01-01`
-    && (row.DATE_TYPE === '累计季报' || reportDate.endsWith('-03-31')))
-  if (!annual || !comparable) return null
+    && dateOnly(row.START_DATE) === dateOnly(annual.START_DATE)
+    && isCumulativePeriod(row, previousYear(reportDate))
+    && Math.abs(periodLength(row) - periodLength(current)) <= 7)
+  if (!comparable) return null
   const total = numeric(current[revenueField]) + numeric(annual[revenueField]) - numeric(comparable[revenueField])
   return positive(total)
 }

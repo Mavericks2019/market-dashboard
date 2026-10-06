@@ -73,6 +73,46 @@ test('annual report is already twelve months; insurance total income is supporte
   assert.equal(calculateTrailingRevenue(insurer, { ...revenueOptions, secucode: 'BRK_B.N', revenueField: 'TOTAL_INCOME' }), 230)
 })
 
+test('NVIDIA TTM follows actual fiscal-year boundaries while aligning standardized quarters', () => {
+  const nvidia = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'NVDA')
+  const fiscalIncome = (end, start, value, type, standardized) => income(end, start, value, type, {
+    SECUCODE: nvidia.secucode, STD_REPORT_DATE: standardized,
+  })
+  // Named fields and dates from NVDA.O's F10 reports; amounts in millions of USD.
+  const fiscalRows = [
+    fiscalIncome('2026-07-26', '2026-04-27', 96221, '单季报', '2026-06-30'),
+    fiscalIncome('2026-07-26', '2026-01-26', 177837, '累计季报', '2026-06-30'),
+    fiscalIncome('2026-04-26', '2026-01-26', 81615, '单季报', '2026-03-31'),
+    fiscalIncome('2026-01-25', '2025-01-27', 215938, '年报', '2025-12-31'),
+    fiscalIncome('2025-07-27', '2025-04-28', 46743, '单季报', '2025-06-30'),
+    fiscalIncome('2025-07-27', '2025-01-27', 90805, '累计季报', '2025-06-30'),
+    fiscalIncome('2025-04-27', '2025-01-27', 44062, '单季报', '2025-03-31'),
+  ]
+  const options = { ...revenueOptions, secucode: nvidia.secucode }
+  assert.equal(calculateTrailingRevenue(fiscalRows, options), 302970)
+  assert.equal(calculateTrailingRevenue(fiscalRows, { ...options, reportDate: '2026-03-31' }), 253491)
+  assert.equal(calculateTrailingRevenue(fiscalRows, { ...options, reportDate: '2025-12-31' }), 215938)
+  const row = makeUsFundamentalRow(nvidia, {
+    SECUCODE: nvidia.secucode, STD_REPORT_DATE: '2026-06-30', REPORT_DATE: '2026-07-26',
+    CURRENCY_ABBR: 'USD', TOTAL_MARKET_CAP: 5757490, PE_TTM: 29.85, DIVIDEND_RATE: 0.21817,
+  }, fiscalRows)
+  assert.equal(row.ps, 5757490 / 302970)
+  assert.equal(row.dividendYield, 0.21817)
+
+  const missingComparable = fiscalRows.filter((row) => row.STD_REPORT_DATE !== '2025-06-30')
+  assert.equal(calculateTrailingRevenue(missingComparable, options), null)
+
+  const fiscalGap = fiscalRows.map((row) => row.DATE_TYPE === '年报'
+    ? { ...row, REPORT_DATE: '2026-01-24' } : row)
+  assert.equal(calculateTrailingRevenue(fiscalGap, options), null)
+  const wrongComparableStart = fiscalRows.map((row) => row.STD_REPORT_DATE === '2025-06-30'
+    ? { ...row, START_DATE: '2025-01-28' } : row)
+  assert.equal(calculateTrailingRevenue(wrongComparableStart, options), null)
+  const mislabeledQuarter = fiscalRows.map((row) => row.DATE_TYPE === '累计季报'
+    && row.STD_REPORT_DATE === '2026-06-30' ? { ...row, START_DATE: '2026-04-27' } : row)
+  assert.equal(calculateTrailingRevenue(mislabeledQuarter, options), null)
+})
+
 test('US ratios preserve negative PE, missing dividends and unknown quote time', () => {
   const main = { SECUCODE: google.secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', TOTAL_MARKET_CAP: 2300, PE_TTM: -5, DIVIDEND_RATE: null, PB: 123 }
   const row = makeUsFundamentalRow(google, main, incomeRows)

@@ -31,6 +31,7 @@ const instruments = {
   USDCNY: CNY_INSTRUMENT,
   BRKB: US_INSTRUMENTS.BRKB,
   GOOGL: US_INSTRUMENTS.GOOGL,
+  NVDA: US_INSTRUMENTS.NVDA,
   SPCX: US_INSTRUMENTS.SPCX,
   KO: US_INSTRUMENTS.KO,
   MCD: US_INSTRUMENTS.MCD,
@@ -601,7 +602,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'HSTECH', 'KO', 'MCD'].includes(key)) return [{
+      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'HSTECH', 'KO', 'MCD', 'NVDA'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

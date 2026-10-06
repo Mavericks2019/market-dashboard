@@ -10,7 +10,7 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'SPCX' | 'KO' | 'MCD' | 'SSE' | 'SZSE' | 'ChiNext' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'SPCX' | 'KO' | 'MCD' | 'SSE' | 'SZSE' | 'ChiNext' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string
