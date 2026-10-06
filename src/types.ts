@@ -78,3 +78,32 @@ export interface FundamentalsResponse {
   asOf: number
   rows: FundamentalRow[]
 }
+
+export interface HousingIndexValues {
+  momIndex: number | null
+  yoyIndex: number | null
+}
+
+export interface HousingRecord {
+  month: string
+  newHome: HousingIndexValues
+  resale: HousingIndexValues
+}
+
+export interface HousingCity {
+  id: string
+  name: string
+  records: HousingRecord[]
+}
+
+export interface HousingResponse {
+  asOf: number
+  latestMonth: string
+  historyStart: string
+  sourceName: string
+  sourceUrl: string
+  frequency: string
+  isStale: boolean
+  note: string
+  cities: HousingCity[]
+}

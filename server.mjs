@@ -11,6 +11,7 @@ import { HSTECH_INSTRUMENT, fetchHstechTrend } from './hstech-market.mjs'
 import { MAINLAND_STOCKS_INSTRUMENTS, fetchMainlandStockTrend } from './mainland-stocks.mjs'
 import { DIVIDEND_INDEX_INSTRUMENTS, fetchDividendIndexTrend } from './dividend-indices.mjs'
 import { fetchFundamentals } from './fundamentals.mjs'
+import { fetchHousingData } from './housing-market.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 4174)
@@ -571,6 +572,15 @@ app.get('/api/fundamentals', async (_request, response) => {
     return response.json(await fetchFundamentals())
   } catch {
     return response.status(502).json({ error: '企业估值数据暂不可用，请稍后重试' })
+  }
+})
+
+app.get('/api/housing', async (_request, response) => {
+  response.set('Cache-Control', 'no-store')
+  try {
+    return response.json(await fetchHousingData())
+  } catch {
+    return response.status(502).json({ error: '住宅价格指数暂不可用，请稍后重试' })
   }
 })
 

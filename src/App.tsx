@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, BarChart3, Clock3, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import TrendChart from './TrendChart'
 import FundamentalsTable from './FundamentalsTable'
+import HousingPanel from './HousingPanel'
 import { formatChinaTime, formatNewYorkTime, getCashSessionState, getSessionState } from './marketTime'
 import type { Market, MarketsResponse, Period } from './types'
 import { convertCurrencyMarket, formatMarketNumber, type CurrencyDirection } from './currency'
@@ -277,6 +278,7 @@ export default function App() {
             <TrendChart market={activeMarket} period={period} />
           </section>
         )}
+        <HousingPanel />
         <FundamentalsTable companies={displayMarkets.filter((market) => market.kind === 'stock')} />
       </section>
 

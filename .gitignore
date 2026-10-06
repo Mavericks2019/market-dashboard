@@ -12,5 +12,6 @@ Thumbs.db
 .vscode/
 miniprogram/project.private.config.json
 data/cfets-history-cache.json
+data/housing-history-cache.json
 *-preview.jpg
 *-preview.png

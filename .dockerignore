@@ -11,3 +11,4 @@ npm-debug.log
 *-preview.jpg
 *-preview.png
 data/cfets-history-cache.json
+data/housing-history-cache.json
