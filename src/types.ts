@@ -10,7 +10,7 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'SPCX' | 'KO' | 'MCD' | 'SSE' | 'SZSE' | 'ChiNext' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'SPCX' | 'KO' | 'MCD' | 'UNITREE' | 'SSE' | 'SZSE' | 'ChiNext' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string
@@ -36,6 +36,7 @@ export interface Market {
   sourceUrl?: string
   dataNote?: string
   isStale?: boolean
+  watchStance?: 'bearish'
   points: ChartPoint[]
 }
 
@@ -68,6 +69,7 @@ export interface FundamentalRow {
   dividendBasis?: string
   note?: string
   isStale?: boolean
+  watchStance?: 'bearish'
 }
 
 export interface FundamentalsResponse {

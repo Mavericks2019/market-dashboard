@@ -49,6 +49,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
 
   const rows: FundamentalRow[] = data?.rows ?? companies.map((company) => ({
     key: company.key, symbol: company.symbol, name: company.name, englishName: company.englishName,
+    watchStance: company.watchStance,
     pe: null, ps: null, dividendYield: null, marketTime: null,
   }))
 
@@ -73,7 +74,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
           </tr></thead>
           <tbody>
             {rows.map((row) => <tr key={row.key}>
-              <th scope="row"><strong>{row.name}</strong><small>{row.englishName} · {row.symbol}</small>{row.note && <details className="valuation-details"><summary>口径说明</summary><span className="valuation-note">{row.note}</span></details>}</th>
+              <th scope="row"><div className="watch-stance-cell"><strong>{row.name}</strong>{row.watchStance === 'bearish' && <span className="watch-stance-tag">看空关注</span>}</div><small>{row.englishName} · {row.symbol}</small>{row.note && <details className="valuation-details"><summary>口径说明</summary><span className="valuation-note">{row.note}</span></details>}</th>
               <td><strong>{metric(row.pe, ' 倍', true)}</strong>{row.peBasis && <small>{row.peBasis}</small>}</td>
               <td><strong>{metric(row.ps, ' 倍')}</strong>{row.psBasis && <small>{row.psBasis}</small>}</td>
               <td><strong>{metric(row.dividendYield, '%')}</strong>{row.dividendBasis && <small>{row.dividendBasis}</small>}</td>

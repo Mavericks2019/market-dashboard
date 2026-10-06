@@ -4,12 +4,14 @@ import {
   FUNDAMENTAL_INSTRUMENTS,
   calculateTrailingRevenue,
   createFundamentalsService,
+  makeCnFundamentalRow,
   makeHkFundamentalRow,
   makeUsFundamentalRow,
 } from './fundamentals.mjs'
 
 const google = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'GOOGL')
 const hsbc = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'HSBC')
+const unitree = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'UNITREE')
 
 function income(reportDate, startDate, value, type = '累计季报', overrides = {}) {
   return {
@@ -143,6 +145,27 @@ test('HK yield uses explicitly HKD dividends and a same-source HKD price; PB nev
   assert.throws(() => makeHkFundamentalRow(hsbc, { ...valuation, CORRE_SECUCODE: '行业平均' }, main))
 })
 
+test('A-share TTM ratios retain their valuation date, separate financial period and bearish label', () => {
+  const valuation = {
+    SECUCODE: unitree.secucode, TRADE_DATE: '2026-09-30 00:00:00',
+    PE_TTM: 311.81079117, PS_TTM: 87.7594764, PE_LAR: 654.7947131, PB_MRQ: 63.25406282,
+  }
+  const main = { SECUCODE: unitree.secucode, REPORT_DATE: '2026-06-30 00:00:00' }
+  const row = makeCnFundamentalRow(unitree, valuation, main)
+  assert.equal(row.pe, 311.81079117)
+  assert.equal(row.ps, 87.7594764)
+  assert.equal(row.dividendYield, null)
+  assert.equal(row.valuationDate, '2026-09-30')
+  assert.equal(row.reportDate, '2026-06-30')
+  assert.equal(row.marketTime, null)
+  assert.equal(row.watchStance, 'bearish')
+  assert.match(row.note, /缺失不代表零股息/)
+  assert.equal(makeCnFundamentalRow(unitree, { ...valuation, PS_TTM: null }, main).ps, null)
+  assert.equal(makeCnFundamentalRow(unitree, { ...valuation, PE_TTM: -5 }, main).pe, -5)
+  assert.throws(() => makeCnFundamentalRow(unitree, { ...valuation, SECUCODE: 'OTHER.SH' }, main))
+  assert.throws(() => makeCnFundamentalRow(unitree, valuation, { ...main, SECUCODE: 'OTHER.SH' }))
+})
+
 test('five-minute caching deduplicates concurrent requests and preserves successful data on failure', async () => {
   let time = 0
   let calls = 0
@@ -150,11 +173,16 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   const fetchImpl = async (url) => {
     calls += 1
     if (failing) throw new Error('timeout')
+    if (new URL(url).pathname.endsWith('/ZYZBAjaxNew')) {
+      assert.equal(new URL(url).searchParams.get('code'), 'SH688836')
+      return { ok: true, json: async () => ({ data: [{ SECUCODE: unitree.secucode, REPORT_DATE: '2026-06-30' }] }) }
+    }
     const params = new URL(url).searchParams
     const secucode = params.get('filter').match(/SECUCODE="([^"]+)"/)[1]
     const report = params.get('reportName')
     let data
-    if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
+    if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: 311.81, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
+    else if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
     else if (report.includes('HKF10')) data = [{ SECUCODE: secucode, IS_CNY_CODE: '0', TOTAL_MARKET_CAP: 150000, ISSUED_COMMON_SHARES: 1000, DIVIDEND_TTM: 6 }]
     else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: 10, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
     else data = incomeRows.map((row) => ({ ...row, SECUCODE: secucode, TOTAL_INCOME: row.OPERATE_INCOME }))
@@ -166,6 +194,8 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   assert.strictEqual(first, concurrent)
   assert.equal(first.rows.length, FUNDAMENTAL_INSTRUMENTS.length)
   assert.equal(first.rows.find((row) => row.key === 'GOOGL').ps, 10)
+  assert.equal(first.rows.find((row) => row.key === 'UNITREE').ps, 87.76)
+  assert.equal(first.rows.find((row) => row.key === 'UNITREE').watchStance, 'bearish')
   time = 299_999
   assert.strictEqual(await fetchFundamentals(), first)
   assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 2)
@@ -186,4 +216,5 @@ test('first-load outage returns unavailable metrics, never fabricated zeros', as
   assert.equal(result.rows.length, FUNDAMENTAL_INSTRUMENTS.length)
   assert.ok(result.rows.every((row) => row.pe === null && row.ps === null && row.dividendYield === null))
   assert.ok(result.rows.every((row) => /暂时不可用/.test(row.note)))
+  assert.equal(result.rows.find((row) => row.key === 'UNITREE').watchStance, 'bearish')
 })

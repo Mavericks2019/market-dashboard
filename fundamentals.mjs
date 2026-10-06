@@ -1,6 +1,7 @@
 // Eastmoney's own public F10 pages document the named fields used here.
 // HK: /PC_HKF10/pages/home/index.html (valuation comparison and main indicators).
 // US: /PC_USF10/pages/index.html (main indicators and financial analysis).
+// CN: /gzfx/detail/<code>.html uses RPT_VALUEANALYSIS_DET's PE_TTM/PS_TTM.
 // Never interpret PB as PS, missing dividends as zero, or cumulative reports as quarters.
 
 const DATA_API = 'https://datacenter.eastmoney.com/securities/api/data/v1/get'
@@ -16,6 +17,7 @@ export const FUNDAMENTAL_INSTRUMENTS = [
   { key: 'MCD', symbol: 'MCD', secucode: 'MCD.N', name: '麦当劳', englishName: "McDonald's Corporation", region: 'US' },
   { key: 'HSBC', symbol: '00005.HK', secucode: '00005.HK', name: '汇丰控股', englishName: 'HSBC Holdings', region: 'HK' },
   { key: 'STAN', symbol: '02888.HK', secucode: '02888.HK', name: '渣打集团', englishName: 'Standard Chartered', region: 'HK' },
+  { key: 'UNITREE', symbol: '688836.SH', secucode: '688836.SH', name: '宇树科技', englishName: 'Unitree Robotics', region: 'CN', watchStance: 'bearish' },
 ]
 
 function numeric(value) {
@@ -103,6 +105,7 @@ function baseRow(instrument) {
     symbol: instrument.symbol,
     name: instrument.name,
     englishName: instrument.englishName,
+    ...(instrument.watchStance ? { watchStance: instrument.watchStance } : {}),
     pe: null,
     ps: null,
     dividendYield: null,
@@ -110,7 +113,9 @@ function baseRow(instrument) {
     reportDate: null,
     valuationDate: null,
     sourceName: '东方财富 F10',
-    sourceUrl: instrument.region === 'HK'
+    sourceUrl: instrument.region === 'CN'
+      ? `https://data.eastmoney.com/gzfx/detail/${instrument.secucode.split('.')[0]}.html`
+      : instrument.region === 'HK'
       ? `https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html?code=${instrument.symbol.slice(0, 5)}`
       : `https://emweb.securities.eastmoney.com/PC_USF10/pages/index.html?code=${instrument.secucode.split('.')[0]}`,
     peBasis: 'TTM（近12个月）',
@@ -174,6 +179,33 @@ export function makeHkFundamentalRow(instrument, valuation, main) {
   return row
 }
 
+export function makeCnFundamentalRow(instrument, valuation, main) {
+  if (valuation?.SECUCODE !== instrument.secucode || main?.SECUCODE !== instrument.secucode) {
+    throw new Error('财务指标未返回对应A股')
+  }
+  const row = baseRow(instrument)
+  row.sourceName = '东方财富估值 / F10'
+  // The source exposes named trailing ratios, distinct from PE_LAR (static)
+  // and PB_MRQ (book value). TRADE_DATE is the daily valuation date, not the
+  // financial reporting date or a fabricated live quotation timestamp.
+  row.pe = numeric(valuation.PE_TTM)
+  row.ps = positive(valuation.PS_TTM)
+  row.valuationDate = dateOnly(valuation.TRADE_DATE)
+  row.reportDate = dateOnly(main.REPORT_DATE)
+  // RPT_VALUEANALYSIS_DET has no trailing cash-dividend-yield field. Unknown
+  // zero-valued quote fields or pre-IPO distributions are not substituted.
+  row.dividendYield = null
+  row.dividendBasis = '近12个月现金股息 · 来源暂无'
+  const notes = []
+  if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
+  if (row.pe === null) notes.push('来源暂未提供TTM市盈率')
+  if (row.ps === null) notes.push('来源暂未提供TTM市销率')
+  notes.push('来源未提供近12个月股息率，缺失不代表零股息')
+  notes.push('PE/PS使用来源估值日的TTM口径，交易日与财报期分别列示')
+  row.note = notes.join('；')
+  return row
+}
+
 export function createFundamentalsService({ fetchImpl = fetch, now = Date.now, ttl = CACHE_TTL } = {}) {
   let cached = null
   let refreshedAt = null
@@ -213,6 +245,23 @@ export function createFundamentalsService({ fetchImpl = fetch, now = Date.now, t
           report('RPT_HKF10_FN_MAININDICATORMAX', instrument, { pageSize: '1' }),
         ])
         row = makeHkFundamentalRow(instrument, valuation[0], main[0])
+      } else if (instrument.region === 'CN') {
+        const code = `SH${instrument.secucode.split('.')[0]}`
+        const [valuation, financials] = await Promise.all([
+          report('RPT_VALUEANALYSIS_DET', instrument, {
+            sortColumns: 'TRADE_DATE', pageSize: '1', source: 'WEB', client: 'WEB',
+          }),
+          (async () => {
+            const response = await fetchImpl(`https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew?type=0&code=${code}`, {
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+            })
+            if (!response.ok) throw new Error(`A股财务数据服务返回 ${response.status}`)
+            const data = await response.json()
+            if (!Array.isArray(data.data)) throw new Error('A股财务数据服务返回格式异常')
+            return data.data
+          })(),
+        ])
+        row = makeCnFundamentalRow(instrument, valuation[0], financials[0])
       } else {
         const [main, financials] = await Promise.all([
           report('RPT_USF10_DATA_MAININDICATOR', instrument, { pageSize: '1' }),

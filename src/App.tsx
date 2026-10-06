@@ -56,12 +56,13 @@ function convertGoldMarket(market: Market, unit: GoldUnit, fxRate: number | null
 function MarketCard({ market, active, onClick }: { market: Market; active: boolean; onClick: () => void }) {
   const positive = (market.change ?? 0) >= 0
   return (
-    <button className={`market-card ${active ? 'active' : ''}`} onClick={onClick} aria-pressed={active}>
+    <button className={`market-card ${active ? 'active' : ''}${market.watchStance === 'bearish' ? ' bearish' : ''}`} onClick={onClick} aria-pressed={active}>
       <span className="card-accent" />
       <span className="market-card-top">
         <span>
           <strong>{market.name}</strong>
-          <small>{market.englishName}{market.kind !== 'forex' ? ` · ${market.exchangeTimezone === 'Asia/Hong_Kong' ? market.symbol : market.key}` : ''}</small>
+          <small>{market.englishName}{market.kind !== 'forex' ? ` · ${market.kind === 'stock' || market.exchangeTimezone === 'Asia/Hong_Kong' ? market.symbol : market.key}` : ''}</small>
+          {market.watchStance === 'bearish' && <span className="watch-stance-tag">看空关注</span>}
         </span>
         <span className={`direction ${positive ? 'up' : 'down'}`}>{market.change === null ? '暂无' : market.change === 0 ? '持平' : positive ? '上涨' : '下跌'}</span>
       </span>
@@ -156,6 +157,8 @@ export default function App() {
     ? { phase: 'weekend', label: '人民币汇率指数', detail: activeMarket.frequency || '官方定期发布' }
     : activeMarket?.exchangeTimezone === 'Asia/Hong_Kong'
       ? { phase: 'weekend', label: '港股行情', detail: '香港市场 · 以行情源报价时间为准' }
+    : activeMarket?.kind === 'stock' && activeMarket.exchangeTimezone === 'Asia/Shanghai'
+      ? { phase: 'weekend', label: 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
     : activeMarket?.kind === 'forex'
       ? { phase: 'weekend', label: '在岸人民币外汇', detail: '以行情源报价时间为准' }
     : activeMarket?.kind === 'index' || activeMarket?.kind === 'stock'
@@ -178,6 +181,8 @@ export default function App() {
           <div className={`session-status ${session.phase}`}><span />{session.label}<small>{session.detail}</small></div>
           <div className="clock"><Clock3 size={15} /><span>{activeMarket?.exchangeTimezone === 'Asia/Hong_Kong'
             ? `香港 ${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Hong_Kong', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now)}`
+            : activeMarket?.exchangeTimezone === 'Asia/Shanghai'
+              ? `北京 ${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now)}`
             : `纽约 ${formatNewYorkTime(now)}`}</span></div>
           <button className="icon-button" onClick={() => load(true)} disabled={refreshing} title="立即刷新" aria-label="立即刷新">
             <RefreshCw size={17} className={refreshing ? 'spin' : ''} />
@@ -200,16 +205,27 @@ export default function App() {
           <div className="market-groups">
             {marketGroups.map((group) => {
               const markets = displayMarkets.filter(group.includes)
+              const bearishMarkets = group.key === 'stocks' ? markets.filter((market) => market.watchStance === 'bearish') : []
+              const regularMarkets = group.key === 'stocks' ? markets.filter((market) => market.watchStance !== 'bearish') : markets
               return <section className="market-group" key={group.key} aria-labelledby={`market-group-${group.key}`}>
                 <div className="market-group-heading">
                   <div className="market-group-title"><h3 id={`market-group-${group.key}`}>{group.title}</h3><span className="market-group-count">{markets.length}</span></div>
                   <p className="market-group-caption">{group.caption}</p>
                 </div>
                 <div className="market-grid">
-                  {markets.map((market) => (
+                  {regularMarkets.map((market) => (
                     <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => setSelectedKey(market.key)} />
                   ))}
                 </div>
+                {bearishMarkets.length > 0 && <section className="bearish-watch-group" aria-labelledby="bearish-watch-title">
+                  <div className="market-group-heading">
+                    <div className="market-group-title"><h4 id="bearish-watch-title">看空关注</h4><span className="market-group-count">{bearishMarkets.length}</span></div>
+                    <p className="market-group-caption">按你的看空观点单独跟踪</p>
+                  </div>
+                  <div className="market-grid">
+                    {bearishMarkets.map((market) => <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => setSelectedKey(market.key)} />)}
+                  </div>
+                </section>}
               </section>
             })}
           </div>

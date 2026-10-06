@@ -8,6 +8,7 @@ import { CFETS_INSTRUMENT, fetchCfetsTrend } from './cfets-market.mjs'
 import { CNY_INSTRUMENT, fetchCnyTrend } from './cny-market.mjs'
 import { HK_STOCKS_INSTRUMENTS, fetchHkStockTrend } from './hk-stocks.mjs'
 import { HSTECH_INSTRUMENT, fetchHstechTrend } from './hstech-market.mjs'
+import { MAINLAND_STOCKS_INSTRUMENTS, fetchMainlandStockTrend } from './mainland-stocks.mjs'
 import { fetchFundamentals } from './fundamentals.mjs'
 
 const app = express()
@@ -37,6 +38,7 @@ const instruments = {
   MCD: US_INSTRUMENTS.MCD,
   HSBC: HK_STOCKS_INSTRUMENTS.HSBC,
   STAN: HK_STOCKS_INSTRUMENTS.STAN,
+  UNITREE: MAINLAND_STOCKS_INSTRUMENTS.UNITREE,
   HSTECH: HSTECH_INSTRUMENT,
   SSE: { symbol: '000001.SS', name: '上证指数', englishName: 'SSE Composite', contract: '上证综合指数', kind: 'index', unit: '点' },
   SZSE: { symbol: '399001.SZ', name: '深证成指', englishName: 'SZSE Component', contract: '深证成份指数', kind: 'index', unit: '点' },
@@ -582,6 +584,7 @@ app.get('/api/markets', async (request, response) => {
       if (key === 'USDCNY') return fetchCnyTrend(period)
       if (Object.hasOwn(HK_STOCKS_INSTRUMENTS, key)) return fetchHkStockTrend(key, period)
       if (key === 'HSTECH') return fetchHstechTrend(period)
+      if (Object.hasOwn(MAINLAND_STOCKS_INSTRUMENTS, key)) return fetchMainlandStockTrend(key, period)
       const trend = key === 'IXIC'
         ? fetchGlobalHistoryTrend(key, period)
         : Object.hasOwn(US_INSTRUMENTS, key)
@@ -602,7 +605,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'HSTECH', 'KO', 'MCD', 'NVDA'].includes(key)) return [{
+      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'HSTECH', 'KO', 'MCD', 'NVDA', 'UNITREE'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

@@ -45,7 +45,17 @@ main { min-height: 100vh; background: linear-gradient(180deg, #0c0f14 0, #090b0f
 .market-group-count { min-width: 22px; padding: 2px 6px; color: #8da89b; background: #121d18; border: 1px solid #25392e; border-radius: 4px; text-align: center; font: 500 10px/1.4 Arial, sans-serif; font-variant-numeric: tabular-nums; }
 .market-group-caption { margin: 0; color: #798494; font-size: 11px; line-height: 1.5; }
 .market-grid, .loading-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bearish-watch-group { margin-top: 20px; padding-top: 16px; border-top: 1px solid #28271f; }
+.bearish-watch-group .market-group-title h4 { margin: 0; color: #c8c1ad; font-size: 13px; font-weight: 600; }
+.bearish-watch-group .market-group-count { color: #b9a67b; background: #1d1a13; border-color: #3a3323; }
+.bearish-watch-group .market-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 260px)); }
+.watch-stance-tag { display: inline-flex; align-items: center; padding: 2px 5px; color: #c4aa70; background: #231e13; border: 1px solid #40351f; border-radius: 3px; font-size: 9px; font-weight: 500; line-height: 1.4; white-space: nowrap; }
+.watch-stance-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .market-card { position: relative; overflow: hidden; min-width: 0; padding: 18px 20px 16px; display: flex; flex-direction: column; text-align: left; color: #e9edf2; background: #11151b; border: 1px solid #252b34; border-radius: 7px; cursor: pointer; transition: border-color .18s, background .18s, transform .18s; }
+.market-card.bearish { border-color: #393326; }
+.market-card.bearish:hover { border-color: #605337; }
+.market-card.bearish.active { border-color: #8b7447; }
+.market-card.bearish.active .card-accent { background: #b49a60; }
 .market-card:hover { transform: translateY(-1px); border-color: #3a424e; background: #14181f; }
 .market-card.active { border-color: #516070; background: #151a21; }
 .card-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: transparent; }
@@ -144,6 +154,8 @@ footer { width: min(1320px, calc(100% - 40px)); margin: 0 auto; padding: 16px 0 
   .market-groups { gap: 24px; }
   .market-group-heading { margin-bottom: 10px; }
   .market-grid, .loading-grid { grid-template-columns: 1fr; gap: 8px; }
+  .bearish-watch-group { margin-top: 16px; padding-top: 14px; }
+  .bearish-watch-group .market-grid { grid-template-columns: minmax(0, 1fr); max-width: 360px; }
   .market-card { padding: 15px 16px 13px; }
   .market-price-line { margin-top: 14px; }
   .market-price { font-size: 26px; }
