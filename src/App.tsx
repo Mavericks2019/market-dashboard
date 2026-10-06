@@ -17,8 +17,8 @@ const periods: Array<{ value: Period; label: string }> = [
 ]
 
 const marketGroups = [
-  { key: 'stocks', title: '个股', caption: '关注的上市企业', includes: (market: Market) => market.kind === 'stock' },
   { key: 'indices', title: '指数', caption: '全球股市指数与股指期货', includes: (market: Market) => (market.kind === 'index' || market.kind === 'futures') && market.key !== 'CFETS' },
+  { key: 'stocks', title: '个股', caption: '关注的上市企业', includes: (market: Market) => market.kind === 'stock' },
   { key: 'currencies', title: '货币', caption: '人民币汇率、汇率指数与黄金', includes: (market: Market) => market.kind === 'forex' || market.kind === 'metal' || market.key === 'CFETS' },
 ]
 
