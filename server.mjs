@@ -9,6 +9,7 @@ import { CNY_INSTRUMENT, fetchCnyTrend } from './cny-market.mjs'
 import { HK_STOCKS_INSTRUMENTS, fetchHkStockTrend } from './hk-stocks.mjs'
 import { HSTECH_INSTRUMENT, fetchHstechTrend } from './hstech-market.mjs'
 import { MAINLAND_STOCKS_INSTRUMENTS, fetchMainlandStockTrend } from './mainland-stocks.mjs'
+import { DIVIDEND_INDEX_INSTRUMENTS, fetchDividendIndexTrend } from './dividend-indices.mjs'
 import { fetchFundamentals } from './fundamentals.mjs'
 
 const app = express()
@@ -45,6 +46,7 @@ const instruments = {
   SSE: { symbol: '000001.SS', name: '上证指数', englishName: 'SSE Composite', contract: '上证综合指数', kind: 'index', unit: '点' },
   SZSE: { symbol: '399001.SZ', name: '深证成指', englishName: 'SZSE Component', contract: '深证成份指数', kind: 'index', unit: '点' },
   ChiNext: { symbol: '399006.SZ', name: '创业板指', englishName: 'ChiNext Index', contract: '创业板指数', kind: 'index', unit: '点' },
+  ...DIVIDEND_INDEX_INSTRUMENTS,
   FTSE: { symbol: '^FTSE', name: '英国富时100', englishName: 'FTSE 100', contract: 'FTSE 100 Index', kind: 'index', unit: '点' },
   DAX: { symbol: '^GDAXI', name: '德国DAX', englishName: 'DAX', contract: 'DAX Index', kind: 'index', unit: '点' },
   KOSPI: { symbol: '^KS11', name: '韩国综合指数', englishName: 'KOSPI', contract: 'KOSPI Composite', kind: 'index', unit: '点' },
@@ -587,6 +589,7 @@ app.get('/api/markets', async (request, response) => {
       if (Object.hasOwn(HK_STOCKS_INSTRUMENTS, key)) return fetchHkStockTrend(key, period)
       if (key === 'HSTECH') return fetchHstechTrend(period)
       if (Object.hasOwn(MAINLAND_STOCKS_INSTRUMENTS, key)) return fetchMainlandStockTrend(key, period)
+      if (Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key)) return fetchDividendIndexTrend(key, period)
       const trend = key === 'IXIC'
         ? fetchGlobalHistoryTrend(key, period)
         : Object.hasOwn(US_INSTRUMENTS, key)
@@ -607,7 +610,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'PDD', 'UNITREE'].includes(key)) return [{
+      if (Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'PDD', 'UNITREE'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

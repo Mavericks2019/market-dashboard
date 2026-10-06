@@ -6,6 +6,19 @@
 
 行情卡片分为“个股”“指数”“货币”三个板块：关注的上市企业归入个股，全球股市指数和股指期货归入指数，人民币汇率、CFETS 汇率指数与黄金归入货币。企业估值表保留在走势图下方。
 
+“指数”板块包含中证红利 `000922`（CSI Dividend Index）、中证红利低波动 `H30269`（CSI Dividend Low Volatility Index）、中证红利低波动100 `930955`（CSI Dividend Low Volatility 100 Index）和上证红利 `000015`（SSE Dividend Index）。四者均为价格指数，单位为点；默认“历史”视图展示全部可用日线，可用鼠标缩放、移动并查看具体日期的数值。
+
+红利指数的全量日线来自中证指数官网，分时来自东方财富，显示分时记录本身的点位及时间；休市保留最后可用交易数据。价格指数不包含分红再投资，发布前历史为回溯值。官方资料中的基日、发布日期分别为：
+
+| 指数 | 基日（1000点） | 正式发布日期 |
+| --- | --- | --- |
+| [中证红利 000922](https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/zh_CN/000922factsheet.pdf) | 2004-12-31 | 2008-05-26 |
+| [中证红利低波动 H30269](https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/zh_CN/H30269factsheet.pdf) | 2005-12-30 | 2013-12-19 |
+| [中证红利低波动100 930955](https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/zh_CN/930955factsheet.pdf) | 2005-12-30 | 2017-05-26 |
+| [上证红利 000015](https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/zh_CN/000015factsheet.pdf) | 2004-12-31 | 2005-01-04 |
+
+两个低波指数的官方历史接口会在请求起点复制首个交易日数值；基日采用官方定义的1000点，开高低及成交量留空，其余有效历史始于2006-01-04，不插值补齐缺失交易日。日线每5分钟检查，分时随行情刷新；请求失败保留已成功获取的缓存并标明状态。
+
 “个股”内另设“看空关注”分区，按用户观点单独跟踪企业。首家公司为宇树科技（Unitree Robotics，`688836.SH`），[上交所上市公告](https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260818_10829204.shtml)确认其于2026-08-19在科创板上市。提供人民币报价、日内/5日分时及上市以来的全量可用日线；估值表用“看空关注”标签标出该行。分类表示用户的观察名单。
 
 拼多多 `PDD`（PDD Holdings）提供纳斯达克 ADS 行情，以美元/ADS 计价；历史日线从2018-07-26上市日起展示，默认“历史”视图一次显示全部可用数据。公司[投资者说明](https://investor.pddholdings.com/information-investors/)注明每份 ADS 代表4股A类普通股。

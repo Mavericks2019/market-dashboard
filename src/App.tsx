@@ -61,7 +61,7 @@ function MarketCard({ market, active, onClick }: { market: Market; active: boole
       <span className="market-card-top">
         <span>
           <strong>{market.name}</strong>
-          <small>{market.englishName}{market.kind !== 'forex' ? ` · ${market.kind === 'stock' || market.exchangeTimezone === 'Asia/Hong_Kong' ? market.symbol : market.key}` : ''}</small>
+          <small title={`${market.englishName} · ${market.symbol}`}>{market.englishName}{market.kind !== 'forex' ? ` · ${market.kind === 'stock' || ['Asia/Hong_Kong', 'Asia/Shanghai'].includes(market.exchangeTimezone) ? market.symbol : market.key}` : ''}</small>
           {market.watchStance === 'bearish' && <span className="watch-stance-tag">看空关注</span>}
         </span>
         <span className={`direction ${positive ? 'up' : 'down'}`}>{market.change === null ? '暂无' : market.change === 0 ? '持平' : positive ? '上涨' : '下跌'}</span>
@@ -157,8 +157,8 @@ export default function App() {
     ? { phase: 'weekend', label: '人民币汇率指数', detail: activeMarket.frequency || '官方定期发布' }
     : activeMarket?.exchangeTimezone === 'Asia/Hong_Kong'
       ? { phase: 'weekend', label: '港股行情', detail: '香港市场 · 以行情源报价时间为准' }
-    : activeMarket?.kind === 'stock' && activeMarket.exchangeTimezone === 'Asia/Shanghai'
-      ? { phase: 'weekend', label: 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
+    : (activeMarket?.kind === 'stock' || activeMarket?.kind === 'index') && activeMarket.exchangeTimezone === 'Asia/Shanghai'
+      ? { phase: 'weekend', label: activeMarket.kind === 'index' ? 'A股指数' : 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
     : activeMarket?.kind === 'forex'
       ? { phase: 'weekend', label: '在岸人民币外汇', detail: '以行情源报价时间为准' }
     : activeMarket?.kind === 'index' || activeMarket?.kind === 'stock'

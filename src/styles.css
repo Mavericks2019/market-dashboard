@@ -60,11 +60,11 @@ main { min-height: 100vh; background: linear-gradient(180deg, #0c0f14 0, #090b0f
 .market-card.active { border-color: #516070; background: #151a21; }
 .card-accent { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: transparent; }
 .market-card.active .card-accent { background: #2fc47c; }
-.market-card-top { display: flex; justify-content: space-between; align-items: start; }
+.market-card-top { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .market-card-top > span:first-child { min-width: 0; display: flex; flex-direction: column; align-items: start; gap: 5px; }
 .market-card-top strong { font-size: 16px; }
-.market-card-top small { color: #717b89; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.direction { padding: 3px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
+.market-card-top small { max-width: 100%; color: #717b89; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.direction { flex-shrink: 0; white-space: nowrap; padding: 3px 6px; border-radius: 3px; font-size: 9px; font-weight: 700; }
 .direction.up { color: #f06d77; background: rgba(240,93,104,.1); }
 .direction.down { color: #39cd88; background: rgba(47,196,124,.1); }
 .market-price-line { min-height: 35px; margin-top: 22px; display: flex; align-items: baseline; gap: 8px; }
