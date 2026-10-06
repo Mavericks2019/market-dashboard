@@ -82,6 +82,7 @@ export interface FundamentalsResponse {
 export interface HousingIndexValues {
   momIndex: number | null
   yoyIndex: number | null
+  levelIndex: number | null
 }
 
 export interface HousingRecord {
@@ -100,6 +101,8 @@ export interface HousingResponse {
   asOf: number
   latestMonth: string
   historyStart: string
+  levelBaseMonth: string
+  levelBaseValue: number
   sourceName: string
   sourceUrl: string
   frequency: string

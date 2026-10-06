@@ -11,7 +11,7 @@ const COLUMNS = 'REPORT_DATE,CITY,FIRST_COMHOUSE_SAME,FIRST_COMHOUSE_SEQUENTIAL,
 const PAGE_SIZE = 500
 const CITY_NAMES = '北京,上海,广州,深圳,天津,石家庄,太原,呼和浩特,沈阳,大连,长春,哈尔滨,南京,杭州,宁波,合肥,福州,厦门,南昌,济南,青岛,郑州,武汉,长沙,南宁,海口,重庆,成都,贵阳,昆明,西安,兰州,西宁,银川,乌鲁木齐,唐山,秦皇岛,包头,丹东,锦州,吉林,牡丹江,无锡,扬州,徐州,温州,金华,蚌埠,安庆,泉州,九江,赣州,烟台,济宁,洛阳,平顶山,宜昌,襄阳,岳阳,常德,韶关,湛江,惠州,桂林,北海,三亚,泸州,南充,遵义,大理'.split(',')
 const CITY_SET = new Set(CITY_NAMES)
-const NOTE = '国家统计局70个大中城市住宅销售价格指数，由东方财富转引，按月发布。环比以上月=100，同比以上年同月=100；减去100即涨跌百分比，不是每平方米房价。当前统计口径公开历史始于2011年1月；2011年统计制度调整，旧口径不直接拼接。2026年调整对比基期与权数，图表保留各月原始环比/同比，不拼接定基值。'
+const NOTE = '国家统计局70个大中城市住宅销售价格指数，由东方财富转引，按月发布。趋势指数以2011年1月=100，将此后每月环比指数连乘重建；它是估算的价格水平走势，不是官方定基指数或元/平方米房价。公开环比数据保留1位小数，连乘会积累舍入误差；缺月或缺失环比之后不推算。原始环比以上月=100，同比以上年同月=100，减去100即涨跌百分比。当前统计口径公开历史始于2011年1月；2011年统计制度调整，旧口径不直接拼接。2026年调整对比基期与权数，长期比较需考虑口径变化。'
 
 function monthFromDate(value, currentMonth) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-01(?: 00:00:00)?$/.test(value)) return null
@@ -48,6 +48,38 @@ export function normalizeHousingRows(rows, now = Date.now()) {
   }))
   if (!result.length) throw new Error('房价指数数据为空或字段不匹配')
   return result
+}
+
+export function buildHousingLevelHistory(records) {
+  if (!Array.isArray(records)) throw new Error('房价指数历史记录格式异常')
+  const unique = new Map()
+  for (const record of records) {
+    if (typeof record?.month === 'string' && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(record.month)) unique.set(record.month, record)
+  }
+  const sorted = [...unique.values()].sort((a, b) => a.month.localeCompare(b.month))
+  const levels = { newHome: null, resale: null }
+  let previousMonth = null
+  return sorted.map((record, position) => {
+    const monthNumber = Number(record.month.slice(0, 4)) * 12 + Number(record.month.slice(5)) - 1
+    const continuous = previousMonth !== null && monthNumber === previousMonth + 1
+    const result = { ...record }
+    for (const property of ['newHome', 'resale']) {
+      const observation = record[property] ?? { momIndex: null, yoyIndex: null }
+      if (position === 0 && record.month === '2011-01') {
+        // January is the reference observation; its comparison to December is not compounded.
+        levels[property] = indexValue(observation.momIndex) !== null || indexValue(observation.yoyIndex) !== null ? 100 : null
+      } else if (!continuous || levels[property] === null || indexValue(observation.momIndex) === null) {
+        // Never bridge a missing month with a later YoY observation or silently create a new base.
+        levels[property] = null
+      } else {
+        const level = levels[property] * indexValue(observation.momIndex) / 100
+        levels[property] = Number.isFinite(level) && level > 0 ? level : null
+      }
+      result[property] = { ...observation, levelIndex: levels[property] }
+    }
+    previousMonth = monthNumber
+    return result
+  })
 }
 
 function packedRows(cities) {
@@ -118,8 +150,10 @@ function responseFor(cached, isStale) {
     sourceUrl: SOURCE_URL,
     frequency: '每月发布',
     isStale,
+    levelBaseMonth: '2011-01',
+    levelBaseValue: 100,
     note: isStale ? `数据源暂时连接失败，正在显示已保存的真实历史数据。${NOTE}` : NOTE,
-    cities: cached.cities,
+    cities: cached.cities.map((city) => ({ ...city, records: buildHousingLevelHistory(city.records) })),
   }
 }
 

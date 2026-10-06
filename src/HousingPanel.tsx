@@ -13,11 +13,11 @@ import {
 import type { HousingRecord, HousingResponse } from './types'
 
 type PropertyType = 'newHome' | 'resale'
-type HousingMetric = 'yoyIndex' | 'momIndex'
+type HousingMetric = 'levelIndex' | 'yoyIndex' | 'momIndex'
 type HousingPeriod = '1Y' | '5Y' | 'MAX'
 
 const propertyLabels: Record<PropertyType, string> = { newHome: '新建商品住宅', resale: '二手住宅' }
-const metricLabels: Record<HousingMetric, string> = { yoyIndex: '同比', momIndex: '环比' }
+const metricLabels: Record<HousingMetric, string> = { levelIndex: '房价指数', yoyIndex: '同比', momIndex: '环比' }
 const signed = new Intl.NumberFormat('zh-CN', { signDisplay: 'always', minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
 function change(index: number | null | undefined) {
@@ -27,6 +27,16 @@ function change(index: number | null | undefined) {
 function changeText(index: number | null | undefined) {
   const value = change(index)
   return value == null ? '暂无' : `${signed.format(value)}%`
+}
+
+function metricValue(index: number | null | undefined, metric: HousingMetric) {
+  if (metric !== 'levelIndex') return change(index)
+  return index != null && Number.isFinite(index) && index > 0 ? index : null
+}
+
+function valueText(value: number | null | undefined, metric: HousingMetric, withUnit = true) {
+  if (value == null || !Number.isFinite(value)) return '暂无'
+  return metric === 'levelIndex' ? `${value.toFixed(2)}${withUnit ? ' 点' : ''}` : `${signed.format(value)}%`
 }
 
 function monthText(month: string) {
@@ -47,15 +57,16 @@ function timeMonth(time: Time) {
   return `${time.year}-${String(time.month).padStart(2, '0')}`
 }
 
-function HousingChart({ records, property, metric, city }: {
+function HousingChart({ records, property, metric, city, baseValue }: {
   records: HousingRecord[]
   property: PropertyType
   metric: HousingMetric
   city: string
+  baseValue: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltip, setTooltip] = useState<{ record: HousingRecord; x: number; y: number } | null>(null)
-  const hasValues = records.some((record) => change(record[property][metric]) != null)
+  const hasValues = records.some((record) => metricValue(record[property][metric], metric) != null)
 
   useEffect(() => {
     const container = containerRef.current
@@ -87,7 +98,7 @@ function HousingChart({ records, property, metric, city }: {
       },
       localization: {
         locale: 'zh-CN',
-        priceFormatter: (price: number) => `${signed.format(price)}%`,
+        priceFormatter: (price: number) => valueText(price, metric, false),
         timeFormatter: (time: Time) => monthText(timeMonth(time)),
       },
     })
@@ -99,20 +110,20 @@ function HousingChart({ records, property, metric, city }: {
       lastValueVisible: false,
       crosshairMarkerBackgroundColor: color,
       crosshairMarkerBorderColor: '#0f1218',
-      priceFormat: { type: 'custom' as const, formatter: (price: number) => `${signed.format(price)}%`, minMove: 0.1 },
+      priceFormat: { type: 'custom' as const, formatter: (price: number) => valueText(price, metric, false), minMove: metric === 'levelIndex' ? 0.01 : 0.1 },
     }
 
     // The empty series keeps all supplied months on the time axis, including gaps.
     const calendar = chart.addSeries(LineSeries, seriesOptions)
     calendar.setData(records.map((record) => ({ time: monthTimestamp(record.month) })))
-    calendar.createPriceLine({ price: 0, color: '#536071', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
+    calendar.createPriceLine({ price: metric === 'levelIndex' ? baseValue : 0, color: '#536071', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false })
 
     // A separate line for each uninterrupted run prevents missing months being joined.
     const segments: Array<Array<{ time: UTCTimestamp; value: number }>> = []
     let previousMonth: number | null = null
     let segment: Array<{ time: UTCTimestamp; value: number }> = []
     for (const record of records) {
-      const value = change(record[property][metric])
+      const value = metricValue(record[property][metric], metric)
       const currentMonth = monthNumber(record.month)
       if (value == null || (previousMonth != null && currentMonth !== previousMonth + 1)) {
         if (segment.length) segments.push(segment)
@@ -145,7 +156,7 @@ function HousingChart({ records, property, metric, city }: {
       chart.remove()
       setTooltip(null)
     }
-  }, [records, property, metric, hasValues])
+  }, [records, property, metric, hasValues, baseValue])
 
   return <div className="housing-chart-shell">
     <div className="housing-chart" ref={containerRef} aria-label={`${city}${propertyLabels[property]}${metricLabels[metric]}月度趋势图`}>
@@ -153,14 +164,15 @@ function HousingChart({ records, property, metric, city }: {
     </div>
     {tooltip && <div className="chart-tooltip housing-tooltip" style={{
       left: Math.min(Math.max(tooltip.x + 14, 8), Math.max(8, (containerRef.current?.clientWidth ?? 0) - 196)),
-      top: Math.min(Math.max(8, tooltip.y - 118), Math.max(8, (containerRef.current?.clientHeight ?? 0) - 150)),
+      top: Math.min(Math.max(8, tooltip.y - 136), Math.max(8, (containerRef.current?.clientHeight ?? 0) - 175)),
     }}>
       <div className="chart-tooltip-time">{city} · {monthText(tooltip.record.month)}</div>
-      <div className="chart-tooltip-close"><span>{metricLabels[metric]}涨跌幅</span><strong>{changeText(tooltip.record[property][metric])}</strong></div>
+      <div className="chart-tooltip-close"><span>{metric === 'levelIndex' ? '房价指数（推算）' : `${metricLabels[metric]}涨跌幅`}</span><strong>{valueText(metricValue(tooltip.record[property][metric], metric), metric)}</strong></div>
       <div className="housing-tooltip-details">
+        {metric !== 'levelIndex' && <span>房价指数（推算） <b>{valueText(tooltip.record[property].levelIndex, 'levelIndex')}</b></span>}
         <span>环比 <b>{changeText(tooltip.record[property].momIndex)}</b></span>
         <span>同比 <b>{changeText(tooltip.record[property].yoyIndex)}</b></span>
-        <span>官方{metricLabels[metric]}指数 <b>{tooltip.record[property][metric]?.toFixed(1) ?? '暂无'}</b></span>
+        {metric !== 'levelIndex' && <span>官方{metricLabels[metric]}指数 <b>{tooltip.record[property][metric]?.toFixed(1) ?? '暂无'}</b></span>}
       </div>
     </div>}
   </div>
@@ -172,7 +184,7 @@ export default function HousingPanel() {
   const [error, setError] = useState('')
   const [cityId, setCityId] = useState('')
   const [property, setProperty] = useState<PropertyType>('newHome')
-  const [metric, setMetric] = useState<HousingMetric>('yoyIndex')
+  const [metric, setMetric] = useState<HousingMetric>('levelIndex')
   const [period, setPeriod] = useState<HousingPeriod>('MAX')
   const activeRequest = useRef<AbortController | null>(null)
 
@@ -221,7 +233,9 @@ export default function HousingPanel() {
     return records.filter((record) => monthNumber(record.month) >= firstMonth)
   }, [records, latest, period])
   const latestPrices = latest?.[property]
-  const latestValue = change(latestPrices?.[metric])
+  const latestValue = metricValue(latestPrices?.[metric], metric)
+  const baseMonth = data?.levelBaseMonth ?? '2011-01'
+  const baseValue = data?.levelBaseValue ?? 100
 
   return <section className="housing-panel" aria-labelledby="housing-title" aria-busy={loading}>
     <div className="section-heading housing-heading">
@@ -243,10 +257,18 @@ export default function HousingPanel() {
       <div className="period-control housing-property-control" role="group" aria-label="住宅类型">
         {(['newHome', 'resale'] as const).map((value) => <button key={value} className={property === value ? 'selected' : ''} aria-pressed={property === value} onClick={() => setProperty(value)}>{value === 'newHome' ? '新房' : '二手房'}</button>)}
       </div>
+      <div className="period-control housing-metric-control" role="group" aria-label="住宅价格指标">
+        {([{ value: 'levelIndex', label: '房价指数' }, { value: 'yoyIndex', label: '同比涨跌' }, { value: 'momIndex', label: '环比涨跌' }] as const).map((item) => <button key={item.value} className={metric === item.value ? 'selected' : ''} aria-pressed={metric === item.value} onClick={() => setMetric(item.value)}>{item.label}</button>)}
+      </div>
       <div className="housing-release"><Building2 size={14} /><span>{data ? `最新统计 ${monthText(data.latestMonth)}` : '等待月度数据'}</span></div>
     </div>
 
     <div className="housing-stats">
+      <button className={`housing-stat ${metric === 'levelIndex' ? 'selected' : ''}`} aria-pressed={metric === 'levelIndex'} onClick={() => setMetric('levelIndex')}>
+        <span>{city?.name ?? '城市'} · {propertyLabels[property]} · 房价指数</span>
+        <strong className="housing-level-value">{valueText(latestPrices?.levelIndex, 'levelIndex')}</strong>
+        <small>{latest ? monthText(latest.month) : loading ? '正在加载…' : '暂无数据'} · {monthText(baseMonth)}={baseValue} · 环比推算</small>
+      </button>
       {(['yoyIndex', 'momIndex'] as const).map((value) => {
         const rate = change(latestPrices?.[value])
         return <button key={value} className={`housing-stat ${metric === value ? 'selected' : ''}`} aria-pressed={metric === value} onClick={() => setMetric(value)}>
@@ -258,15 +280,16 @@ export default function HousingPanel() {
     </div>
 
     <div className="housing-chart-header">
-      <div><h3>{city?.name ?? '城市'}{propertyLabels[property]} · {metricLabels[metric]}涨跌幅</h3><p>{visibleRecords.length ? `${visibleRecords[0].month} — ${visibleRecords.at(-1)?.month} · 月度数据` : '等待历史数据'}{latestValue == null ? '' : ' · 鼠标悬停查看详情'}</p></div>
+      <div><h3>{city?.name ?? '城市'}{propertyLabels[property]} · {metric === 'levelIndex' ? '房价水平指数（环比推算）' : `${metricLabels[metric]}涨跌幅`}</h3><p>{visibleRecords.length ? `${visibleRecords[0].month} — ${visibleRecords.at(-1)?.month} · ${metric === 'levelIndex' ? `${monthText(baseMonth)}=${baseValue}` : '月度数据'}` : '等待历史数据'}{latestValue == null ? '' : ' · 鼠标悬停查看详情'}</p></div>
       <div className="period-control" role="group" aria-label="住宅价格历史范围">
         {([{ value: '1Y', label: '1年' }, { value: '5Y', label: '5年' }, { value: 'MAX', label: '全部历史' }] as const).map((item) => <button key={item.value} className={period === item.value ? 'selected' : ''} aria-pressed={period === item.value} onClick={() => setPeriod(item.value)}>{item.label}</button>)}
       </div>
     </div>
-    <HousingChart records={visibleRecords} property={property} metric={metric} city={city?.name ?? ''} />
+    <HousingChart records={visibleRecords} property={property} metric={metric} city={city?.name ?? ''} baseValue={baseValue} />
     <div className="housing-notes">
-      <span>涨跌幅 = 官方指数 − 100；同比比较上年同月，环比比较上月。图表默认展示全部可用历史；缺失月份不连线，不表示房价为零。</span>
-      {data?.note && <span>{data.note}</span>}
+      <span>房价指数以{monthText(baseMonth)}={baseValue}，150点表示比基期高50%；为环比推算值，不是元/㎡。切换范围不改变基期，缺失后不续算。</span>
+      <span>同比、环比涨跌幅 = 对应官方指数 − 100；详细推算方法、舍入误差及统计口径见下方说明。</span>
+      {data?.note && <details className="housing-method-note"><summary>数据与推算口径</summary><span>{data.note}</span></details>}
       {data?.sourceUrl && <a href={data.sourceUrl} target="_blank" rel="noreferrer">{data.sourceName || '国家统计局'} · 查看数据来源</a>}
       <a href="https://www.stats.gov.cn/zs/tjws/zytjzbqs/zzxsjgzs/202411/t20241128_1957596.html" target="_blank" rel="noreferrer">国家统计局 · 统计口径说明</a>
     </div>

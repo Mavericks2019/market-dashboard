@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createHousingClient, makeHousingSnapshot, normalizeHousingRows } from './housing-market.mjs'
+import { buildHousingLevelHistory, createHousingClient, makeHousingSnapshot, normalizeHousingRows } from './housing-market.mjs'
 
 const NOW = Date.parse('2026-10-06T10:00:00+08:00')
 const row = (city, month, extra = {}) => ({
@@ -18,6 +18,80 @@ const row = (city, month, extra = {}) => ({
 const payload = (data, pages = 1, count = data.length) => new Response(JSON.stringify({ success: true, result: { data, pages, count } }), { headers: { 'content-type': 'application/json' } })
 const options = { now: () => NOW, snapshotFile: null, cacheFile: null, expectedCities: 2 }
 const observations = [row('北京', '2011-01'), row('上海', '2011-01'), row('北京', '2026-08'), row('上海', '2026-08')]
+
+const levelRecord = (month, newMom, resaleMom, newYoy = 150, resaleYoy = 150) => ({
+  month, newHome: { momIndex: newMom, yoyIndex: newYoy }, resale: { momIndex: resaleMom, yoyIndex: resaleYoy },
+})
+
+test('price level compounds subsequent monthly changes without rounding or applying the reference month change', () => {
+  const original = [
+    levelRecord('2011-01', 130, 160),
+    levelRecord('2011-02', 110, 103.7),
+    levelRecord('2011-03', 90, 102.3),
+    levelRecord('2011-04', 106, 101.9),
+  ]
+  const copy = structuredClone(original)
+  const levels = buildHousingLevelHistory(original)
+  assert.deepEqual(levels.map((record) => record.newHome.levelIndex), [100, 110, 99, 104.94])
+  assert.equal(levels[2].resale.levelIndex, (100 * 103.7 / 100) * 102.3 / 100)
+  assert.equal(levels[3].resale.levelIndex, ((100 * 103.7 / 100) * 102.3 / 100) * 101.9 / 100)
+  assert.deepEqual(original, copy)
+  assert.equal(levels[3].newHome.momIndex, 106)
+  assert.equal(levels[3].newHome.yoyIndex, 150)
+})
+
+test('missing months stop both chains; missing ratios stop only their property and never recover via YoY', () => {
+  const invalidRatio = buildHousingLevelHistory([
+    levelRecord('2011-01', 105, 105),
+    levelRecord('2011-02', null, 110),
+    levelRecord('2011-03', 110, 90, 150, 150),
+  ])
+  assert.deepEqual(invalidRatio.map((record) => record.newHome.levelIndex), [100, null, null])
+  assert.deepEqual(invalidRatio.map((record) => record.resale.levelIndex), [100, 110, 99])
+  const missingMonth = buildHousingLevelHistory([
+    levelRecord('2011-01', 100, 100), levelRecord('2011-02', 110, 110),
+    levelRecord('2011-04', 90, 90), levelRecord('2011-05', 120, 120),
+  ])
+  assert.deepEqual(missingMonth.map((record) => record.newHome.levelIndex), [100, 110, null, null])
+  assert.deepEqual(missingMonth.map((record) => record.resale.levelIndex), [100, 110, null, null])
+  const laterStart = buildHousingLevelHistory([levelRecord('2011-02', 100, 100), levelRecord('2011-03', 110, 110)])
+  assert.ok(laterStart.every((record) => record.newHome.levelIndex === null && record.resale.levelIndex === null))
+})
+
+test('defensive date ordering and corrections preserve the fixed base across calendar years', () => {
+  const input = Array.from({ length: 13 }, (_, index) => levelRecord(`${2011 + Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`, 100, 100)).reverse()
+  input.push(levelRecord('2011-12', 110, 90), levelRecord('2011-13', 500, 500))
+  const levels = buildHousingLevelHistory(input)
+  assert.equal(levels.length, 13)
+  assert.equal(levels[0].newHome.levelIndex, 100)
+  assert.equal(levels.at(-1).month, '2012-01')
+  assert.equal(levels.at(-1).newHome.levelIndex, 110)
+  assert.equal(levels.at(-1).resale.levelIndex, 90)
+  const absentProperty = buildHousingLevelHistory([levelRecord('2011-01', null, 100, null, 100), levelRecord('2011-02', 110, 100)])
+  assert.deepEqual(absentProperty.map((record) => record.newHome.levelIndex), [null, null])
+})
+
+test('live, warm cached, and offline responses share identical full-history price levels and base metadata', async () => {
+  let time = NOW
+  let offline = false
+  const monthly = ['2011-01', '2011-02', '2011-03'].flatMap((month, index) => ['北京', '上海'].map((city) => row(city, month, { FIRST_COMHOUSE_SEQUENTIAL: [130, 110, 90][index], SECOND_HOUSE_SEQUENTIAL: [160, 110, 90][index] })))
+  const client = createHousingClient({ ...options, now: () => time, fetchImpl: async () => {
+    if (offline) throw new Error('offline')
+    return payload(monthly)
+  } })
+  const live = await client()
+  assert.equal(live.levelBaseMonth, '2011-01')
+  assert.equal(live.levelBaseValue, 100)
+  assert.deepEqual(live.cities[0].records.map((record) => record.newHome.levelIndex), [100, 110, 99])
+  const warm = await client()
+  assert.deepEqual(warm.cities, live.cities)
+  time += 6 * 60 * 60_000
+  offline = true
+  const stale = await client()
+  assert.equal(stale.isStale, true)
+  assert.deepEqual(stale.cities, live.cities)
+  assert.equal(stale.levelBaseMonth, live.levelBaseMonth)
+})
 
 test('correct new commercial home fields remain separate from resale, other home classes, and shifting base columns', () => {
   const [city] = normalizeHousingRows([row('北京', '2026-08', {
