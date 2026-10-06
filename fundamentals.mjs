@@ -15,8 +15,10 @@ export const FUNDAMENTAL_INSTRUMENTS = [
   { key: 'SPCX', symbol: 'SPCX', secucode: 'SPCX.O', name: 'SpaceX', englishName: 'SpaceX Class A', region: 'US' },
   { key: 'KO', symbol: 'KO', secucode: 'KO.N', name: '可口可乐', englishName: 'The Coca-Cola Company', region: 'US' },
   { key: 'MCD', symbol: 'MCD', secucode: 'MCD.N', name: '麦当劳', englishName: "McDonald's Corporation", region: 'US' },
-  { key: 'HSBC', symbol: '00005.HK', secucode: '00005.HK', name: '汇丰控股', englishName: 'HSBC Holdings', region: 'HK' },
-  { key: 'STAN', symbol: '02888.HK', secucode: '02888.HK', name: '渣打集团', englishName: 'Standard Chartered', region: 'HK' },
+  { key: 'PDD', symbol: 'PDD', secucode: 'PDD.O', name: '拼多多', englishName: 'PDD Holdings', region: 'US' },
+  { key: 'HSBC', symbol: '00005.HK', secucode: '00005.HK', name: '汇丰控股', englishName: 'HSBC Holdings', region: 'HK', bank: true },
+  { key: 'STAN', symbol: '02888.HK', secucode: '02888.HK', name: '渣打集团', englishName: 'Standard Chartered', region: 'HK', bank: true },
+  { key: 'TENCENT', symbol: '00700.HK', secucode: '00700.HK', name: '腾讯控股', englishName: 'Tencent Holdings', region: 'HK' },
   { key: 'UNITREE', symbol: '688836.SH', secucode: '688836.SH', name: '宇树科技', englishName: 'Unitree Robotics', region: 'CN', watchStance: 'bearish' },
 ]
 
@@ -64,6 +66,21 @@ function reportPeriodDate(row) {
 
 function currency(row) {
   return row.CURRENCY_ABBR || (row.CURRENCY === '美元' ? 'USD' : row.CURRENCY)
+}
+
+function usMarketCapInReportingCurrency(main) {
+  // US F10 labels TOTAL_MARKET_CAP as USD, even when CURRENCY_ABBR describes
+  // CNY financial statements. Its paired TTM EPS fields express the same ADS
+  // earnings in CNY and USD, so their quotient supplies a matching conversion.
+  // The cap already uses ADS units: do not multiply by PDD's 4 ordinary shares.
+  const usdCap = positive(main.TOTAL_MARKET_CAP)
+  if (main.CURRENCY_ABBR === 'USD') return usdCap
+  if (main.CURRENCY_ABBR !== 'CNY' || usdCap === null) return null
+  const cnyEps = positive(main.EPS_TTM_CNY)
+  const usdEps = positive(main.EPS_TTM_USD)
+  if (cnyEps === null || usdEps === null) return null
+  const cnyPerUsd = positive(cnyEps / usdEps)
+  return cnyPerUsd === null ? null : positive(usdCap * cnyPerUsd)
 }
 
 function previousYear(date) {
@@ -161,18 +178,20 @@ export function makeUsFundamentalRow(instrument, main, financials) {
   const bookValueDate = dateOnly(main.REPORT_DATE_ZCB)
   if (bookValueDate) row.pbBasis = `MRQ · ${bookValueDate}净资产`
   row.dividendYield = nonnegative(main.DIVIDEND_RATE)
-  const marketCap = main.CURRENCY_ABBR === 'USD' ? positive(main.TOTAL_MARKET_CAP) : null
+  const marketCap = usMarketCapInReportingCurrency(main)
   const trailingRevenue = calculateTrailingRevenue(financials, {
     secucode: instrument.secucode,
     reportDate: row.reportDate,
     revenueField: instrument.insurance ? 'TOTAL_INCOME' : 'OPERATE_INCOME',
+    currencyCode: main.CURRENCY_ABBR,
   })
   row.ps = marketCap !== null && trailingRevenue !== null ? marketCap / trailingRevenue : null
-  row.psBasis = 'TTM · 总市值÷近12个月收入'
+  row.psBasis = main.CURRENCY_ABBR === 'CNY' ? 'TTM · 按同源折算汇率估算' : 'TTM · 总市值÷近12个月收入'
   if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
   if (row.pe === null) notes.push('来源暂未提供市盈率')
   addBookValueNote(row, notes, hasNonpositiveEquity)
   if (row.ps === null) notes.push('近12个月完整同币种收入或市值不足，市销率暂无')
+  else if (main.CURRENCY_ABBR === 'CNY') notes.push('市销率按同源人民币/美元TTM每股收益的换算比例估算，统一市值与收入币种；该比例不等同实时汇率')
   if (row.dividendYield === null) notes.push('来源未提供股息率，缺失不代表零股息')
   if (instrument.insurance) notes.push('收入含保险及其他业务，估值含投资损益影响')
   notes.push('来源未提供估值所用行情的时间')
@@ -201,7 +220,7 @@ export function makeHkFundamentalRow(instrument, valuation, main) {
   const dividend = hkd ? nonnegative(main.DIVIDEND_TTM) : null
   row.dividendYield = cap !== null && shares !== null && dividend !== null ? dividend / (cap / shares) * 100 : null
   row.dividendBasis = '近12个月港元股息÷同源港元股价'
-  const notes = ['银行收入口径与非金融企业不同，市销率不宜直接横向比较']
+  const notes = instrument.bank ? ['银行收入口径与非金融企业不同，市销率不宜直接横向比较'] : []
   if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
   if (row.pe === null) notes.push('来源暂未提供市盈率')
   addBookValueNote(row, notes)

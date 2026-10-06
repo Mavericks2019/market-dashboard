@@ -8,6 +8,7 @@ const COMMON = { kind: 'stock', unit: 'HKD/股', currency: 'HKD', exchange: 'HKE
 export const HK_STOCKS_INSTRUMENTS = {
   HSBC: { ...COMMON, key: 'HSBC', symbol: '00005.HK', sourceSymbol: '00005', name: '汇丰控股', englishName: 'HSBC Holdings', contract: '汇丰控股港股普通股' },
   STAN: { ...COMMON, key: 'STAN', symbol: '02888.HK', sourceSymbol: '02888', name: '渣打集团', englishName: 'Standard Chartered', contract: '渣打集团港股普通股' },
+  TENCENT: { ...COMMON, key: 'TENCENT', symbol: '00700.HK', sourceSymbol: '00700', name: '腾讯控股', englishName: 'Tencent Holdings', contract: '腾讯控股港股普通股' },
 }
 
 function numeric(value, positive = false) {
@@ -144,7 +145,8 @@ export function createHkStocksAdapter({ fetchImpl = fetch, now = Date.now, loadH
   }
   async function fetchQuotes() {
     const value = await cachedRequest('quotes', QUOTE_TTL, async () => {
-      const text = await getText('https://hq.sinajs.cn/list=rt_hk00005,rt_hk02888', 'gb18030')
+      const symbols = Object.values(HK_STOCKS_INSTRUMENTS).map((instrument) => `rt_hk${instrument.sourceSymbol}`).join(',')
+      const text = await getText(`https://hq.sinajs.cn/list=${symbols}`, 'gb18030')
       const quotes = parseHkStockQuotes(text)
       if (quotes.size !== Object.keys(HK_STOCKS_INSTRUMENTS).length) throw new Error('港股快照数据不完整')
       return quotes

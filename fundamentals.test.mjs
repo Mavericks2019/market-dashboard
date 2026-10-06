@@ -12,6 +12,8 @@ import {
 const google = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'GOOGL')
 const hsbc = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'HSBC')
 const unitree = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'UNITREE')
+const pdd = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'PDD')
+const tencent = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'TENCENT')
 
 function income(reportDate, startDate, value, type = '累计季报', overrides = {}) {
   return {
@@ -147,6 +149,53 @@ test('HK yield uses explicitly HKD dividends and a same-source HKD price; PB nev
   assert.equal(makeHkFundamentalRow(hsbc, valuation, { ...main, IS_CNY_CODE: undefined }).dividendYield, null)
   assert.equal(makeHkFundamentalRow(hsbc, valuation, { ...main, DIVIDEND_TTM: null }).dividendYield, null)
   assert.throws(() => makeHkFundamentalRow(hsbc, { ...valuation, CORRE_SECUCODE: '行业平均' }, main))
+})
+
+test('PDD P/S aligns USD ADS market cap with CNY revenue and labels source FX as an estimate', () => {
+  const cnyIncome = incomeRows.map((row) => ({ ...row, SECUCODE: pdd.secucode, CURRENCY_ABBR: 'CNY' }))
+  const main = {
+    SECUCODE: pdd.secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'CNY',
+    SECURITY_TYPE: '美国存托凭证', TOTAL_MARKET_CAP: 2300, ISSUED_COMMON_SHARES: 100,
+    EPS_TTM_CNY: 70, EPS_TTM_USD: 10, PE_TTM: 8.276, PB: 1.6865, DIVIDEND_RATE: null,
+  }
+  const row = makeUsFundamentalRow(pdd, main, cnyIncome)
+  // 2300 USD * 7 CNY/USD / 230 CNY; no extra factor for the ADS ratio.
+  assert.equal(row.ps, 70)
+  assert.equal(row.pe, 8.276)
+  assert.equal(row.pb, 1.6865)
+  assert.equal(row.dividendYield, null)
+  assert.match(row.psBasis, /TTM.*估算/)
+  assert.match(row.note, /不等同实时汇率/)
+  assert.match(row.sourceUrl, /code=PDD$/)
+  for (const value of [undefined, null, '', 0, -10, Infinity]) {
+    assert.equal(makeUsFundamentalRow(pdd, { ...main, EPS_TTM_USD: value }, cnyIncome).ps, null)
+    assert.equal(makeUsFundamentalRow(pdd, { ...main, EPS_TTM_CNY: value }, cnyIncome).ps, null)
+  }
+  const mixed = cnyIncome.map((item) => item.DATE_TYPE === '年报' ? { ...item, CURRENCY_ABBR: 'USD' } : item)
+  assert.equal(makeUsFundamentalRow(pdd, main, mixed).ps, null)
+  assert.equal(makeUsFundamentalRow(pdd, { ...main, CURRENCY_ABBR: 'USD' }, cnyIncome).ps, null)
+  assert.equal(makeUsFundamentalRow(pdd, { ...main, CURRENCY_ABBR: 'HKD' }, cnyIncome).ps, null)
+})
+
+test('Tencent uses its HK listing and HKD dividend units without bank-specific wording', () => {
+  const valuation = {
+    SECUCODE: tencent.secucode, CORRE_SECUCODE: tencent.secucode, REPORT_DATE: '2026-10-05',
+    PE_TTM: 14.411491207863, PB_MQR: 2.941043282339, PS_TTM: 4.299488618609,
+  }
+  const main = {
+    SECUCODE: tencent.secucode, REPORT_DATE: '2026-06-30', IS_CNY_CODE: '0',
+    TOTAL_MARKET_CAP: 3846172166685, ISSUED_COMMON_SHARES: 9092605595, DIVIDEND_TTM: 5.3147973,
+  }
+  const row = makeHkFundamentalRow(tencent, valuation, main)
+  assert.equal(row.symbol, '00700.HK')
+  assert.equal(row.pe, valuation.PE_TTM)
+  assert.equal(row.pb, valuation.PB_MQR)
+  assert.equal(row.ps, valuation.PS_TTM)
+  assert.equal(row.dividendYield, main.DIVIDEND_TTM / 423 * 100)
+  assert.doesNotMatch(row.note, /银行/)
+  assert.match(row.sourceUrl, /code=00700$/)
+  assert.equal(makeHkFundamentalRow(tencent, valuation, { ...main, IS_CNY_CODE: '1' }).dividendYield, null)
+  assert.match(makeHkFundamentalRow(hsbc, { ...valuation, SECUCODE: hsbc.secucode, CORRE_SECUCODE: hsbc.secucode }, { ...main, SECUCODE: hsbc.secucode }).note, /银行/)
 })
 
 test('A-share TTM ratios retain their valuation date, separate financial period and bearish label', () => {

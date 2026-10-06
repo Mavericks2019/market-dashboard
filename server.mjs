@@ -36,8 +36,10 @@ const instruments = {
   SPCX: US_INSTRUMENTS.SPCX,
   KO: US_INSTRUMENTS.KO,
   MCD: US_INSTRUMENTS.MCD,
+  PDD: US_INSTRUMENTS.PDD,
   HSBC: HK_STOCKS_INSTRUMENTS.HSBC,
   STAN: HK_STOCKS_INSTRUMENTS.STAN,
+  TENCENT: HK_STOCKS_INSTRUMENTS.TENCENT,
   UNITREE: MAINLAND_STOCKS_INSTRUMENTS.UNITREE,
   HSTECH: HSTECH_INSTRUMENT,
   SSE: { symbol: '000001.SS', name: '上证指数', englishName: 'SSE Composite', contract: '上证综合指数', kind: 'index', unit: '点' },
@@ -605,7 +607,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'HSTECH', 'KO', 'MCD', 'NVDA', 'UNITREE'].includes(key)) return [{
+      if (['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'PDD', 'UNITREE'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

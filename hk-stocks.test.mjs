@@ -4,14 +4,13 @@ import { createHkStocksAdapter, parseHkDailyRows, parseHkMinuteSessions, parseHk
 
 const dayRows = [['1980-01-02', '9', '10', '11', '8', '100'], ['2026-10-05', '100', '101', '102', '99', '200']]
 const currentRow = ['2026-10-06', '103', '104', '105', '102', '300']
-const quoteText = ['00005', '02888'].map((symbol) => `var hq_str_rt_hk${symbol}="NAME,中文,103,101,105,102,104,3,2.97,103,104,30000,300,12,0,120,80,2026/10/06,09:40:30";`).join('\n')
+const quoteText = ['00005', '02888', '00700'].map((symbol) => `var hq_str_rt_hk${symbol}="NAME,中文,103,101,105,102,104,3,2.97,103,104,30000,300,12,0,120,80,2026/10/06,09:40:30";`).join('\n')
 const responses = (url) => {
   if (url.includes('sinajs')) return new Response(quoteText)
+  const symbol = url.match(/hk\d{5}/)[0]
   if (url.includes('fqkline')) {
-    const symbol = url.includes('00005') ? 'hk00005' : 'hk02888'
     return new Response(JSON.stringify({ code: 0, data: { [symbol]: { day: [currentRow] } } }))
   }
-  const symbol = url.includes('00005') ? 'hk00005' : 'hk02888'
   return new Response(JSON.stringify({ code: 0, data: { [symbol]: { data: [
     { date: '20261006', data: ['0931 104 30', '0930 103 20'] },
     { date: '20261005', data: ['0930 101 10'] },
@@ -58,6 +57,31 @@ test('MAX keeps old history when refreshing a short window; periods share true s
   assert.equal(max.price, 104)
   assert.equal(max.previousClose, 101)
   assert.equal(max.isStale, false)
+})
+
+test('Tencent requests its own quote and minute series without replacing IPO history', async () => {
+  const requests = []
+  const ipoRow = ['2004-06-16', '4.375', '4.150', '4.625', '4.075', '439775000']
+  const adapter = createHkStocksAdapter({
+    fetchImpl: async (url) => { requests.push(url); return responses(url) },
+    loadHistory: async (symbol) => {
+      assert.equal(symbol, '00700')
+      return { rows: [ipoRow] }
+    },
+  })
+  const [max, day, week] = await Promise.all(['MAX', '1D', '5D'].map((period) => adapter.fetchTrend('TENCENT', period)))
+  assert.equal(max.symbol, '00700.HK')
+  assert.equal(max.points.length, 2)
+  assert.equal(max.points[0].close, 4.15)
+  assert.equal(new Date(max.historyStart * 1000).toISOString().slice(0, 10), '2004-06-16')
+  assert.equal(day.dataGranularity, '1m')
+  assert.equal(day.points.length, 2)
+  assert.equal(week.points.length, 3)
+  assert.equal(max.price, 104)
+  assert.equal(max.isStale, false)
+  assert.ok(requests.some((url) => url.includes('list=') && url.includes('rt_hk00700')))
+  assert.ok(requests.some((url) => url.includes('param=hk00700,day')))
+  assert.ok(requests.some((url) => url.includes('code=hk00700')))
 })
 
 test('network failure uses bundled history, marks stale, and labels daily intraday fallback', async () => {
