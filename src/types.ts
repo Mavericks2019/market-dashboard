@@ -57,6 +57,7 @@ export interface FundamentalRow {
   name: string
   englishName: string
   pe: number | null
+  pb: number | null
   ps: number | null
   dividendYield: number | null
   marketTime: number | null
@@ -65,6 +66,7 @@ export interface FundamentalRow {
   sourceName?: string
   sourceUrl?: string
   peBasis?: string
+  pbBasis?: string
   psBasis?: string
   dividendBasis?: string
   note?: string

@@ -1,7 +1,7 @@
 // Eastmoney's own public F10 pages document the named fields used here.
 // HK: /PC_HKF10/pages/home/index.html (valuation comparison and main indicators).
 // US: /PC_USF10/pages/index.html (main indicators and financial analysis).
-// CN: /gzfx/detail/<code>.html uses RPT_VALUEANALYSIS_DET's PE_TTM/PS_TTM.
+// CN: /gzfx/detail/<code>.html uses RPT_VALUEANALYSIS_DET's PE_TTM/PB_MRQ/PS_TTM.
 // Never interpret PB as PS, missing dividends as zero, or cumulative reports as quarters.
 
 const DATA_API = 'https://datacenter.eastmoney.com/securities/api/data/v1/get'
@@ -34,6 +34,22 @@ function positive(value) {
 function nonnegative(value) {
   const result = numeric(value)
   return result !== null && result >= 0 ? result : null
+}
+
+function priceToBook(value, hasNonpositiveEquity = false) {
+  const ratio = numeric(value)
+  // An unqualified zero can be a missing-value sentinel. Keep it only when
+  // the same report confirms nonpositive book value, for an N/A display.
+  if (ratio === 0 && !hasNonpositiveEquity) return null
+  if (ratio !== null && ratio > 0 && hasNonpositiveEquity) return null
+  return ratio
+}
+
+function addBookValueNote(row, notes, hasNonpositiveEquity = false) {
+  if (hasNonpositiveEquity || (row.pb !== null && row.pb < 0)) {
+    notes.push('最新财报净资产不为正，市净率不适用')
+    if (row.pb === null) notes.push('来源市净率缺失或与净资产口径不一致，数值暂不展示')
+  } else if (row.pb === null) notes.push('来源暂未提供有效市净率')
 }
 
 function dateOnly(value) {
@@ -107,6 +123,7 @@ function baseRow(instrument) {
     englishName: instrument.englishName,
     ...(instrument.watchStance ? { watchStance: instrument.watchStance } : {}),
     pe: null,
+    pb: null,
     ps: null,
     dividendYield: null,
     marketTime: null,
@@ -119,6 +136,7 @@ function baseRow(instrument) {
       ? `https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html?code=${instrument.symbol.slice(0, 5)}`
       : `https://emweb.securities.eastmoney.com/PC_USF10/pages/index.html?code=${instrument.secucode.split('.')[0]}`,
     peBasis: 'TTM（近12个月）',
+    pbBasis: 'MRQ（最新财报净资产）',
     psBasis: 'TTM（近12个月）',
     dividendBasis: '近12个月现金股息',
     note: '',
@@ -132,6 +150,16 @@ export function makeUsFundamentalRow(instrument, main, financials) {
   const notes = []
   row.reportDate = reportPeriodDate(main)
   row.pe = numeric(main.PE_TTM)
+  const equity = numeric(main.EQUITY_JYBZ)
+  const bookValuePerShare = numeric(main.BVPS)
+  const hasNonpositiveEquity = (equity !== null && equity <= 0)
+    || (bookValuePerShare !== null && bookValuePerShare <= 0)
+  // US F10's PB_SOURCE explicitly defines PB as total market capitalization /
+  // latest reported equity attributable to the parent. REPORT_DATE_ZCB is the
+  // actual balance-sheet date, which can differ from standardized income dates.
+  row.pb = priceToBook(main.PB, hasNonpositiveEquity)
+  const bookValueDate = dateOnly(main.REPORT_DATE_ZCB)
+  if (bookValueDate) row.pbBasis = `MRQ · ${bookValueDate}净资产`
   row.dividendYield = nonnegative(main.DIVIDEND_RATE)
   const marketCap = main.CURRENCY_ABBR === 'USD' ? positive(main.TOTAL_MARKET_CAP) : null
   const trailingRevenue = calculateTrailingRevenue(financials, {
@@ -143,6 +171,7 @@ export function makeUsFundamentalRow(instrument, main, financials) {
   row.psBasis = 'TTM · 总市值÷近12个月收入'
   if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
   if (row.pe === null) notes.push('来源暂未提供市盈率')
+  addBookValueNote(row, notes, hasNonpositiveEquity)
   if (row.ps === null) notes.push('近12个月完整同币种收入或市值不足，市销率暂无')
   if (row.dividendYield === null) notes.push('来源未提供股息率，缺失不代表零股息')
   if (instrument.insurance) notes.push('收入含保险及其他业务，估值含投资损益影响')
@@ -156,6 +185,9 @@ export function makeHkFundamentalRow(instrument, valuation, main) {
     || main?.SECUCODE !== instrument.secucode) throw new Error('财务指标未返回对应港股')
   const row = baseRow(instrument)
   row.pe = numeric(valuation.PE_TTM)
+  // HK F10 uses the spelling PB_MQR for the column its page labels MRQ.
+  // PB_LYR is the previous annual-report ratio and is not interchangeable.
+  row.pb = priceToBook(valuation.PB_MQR)
   row.ps = positive(valuation.PS_TTM)
   row.valuationDate = dateOnly(valuation.REPORT_DATE)
   row.reportDate = dateOnly(main.REPORT_DATE)
@@ -172,9 +204,10 @@ export function makeHkFundamentalRow(instrument, valuation, main) {
   const notes = ['银行收入口径与非金融企业不同，市销率不宜直接横向比较']
   if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
   if (row.pe === null) notes.push('来源暂未提供市盈率')
+  addBookValueNote(row, notes)
   if (row.ps === null) notes.push('来源暂未提供市销率')
   if (row.dividendYield === null) notes.push('同币种股息或股价不足，股息率暂无')
-  notes.push('PE/PS日期为来源公布的估值日；股息率使用财务页最新市值，未提供该行情时间')
+  notes.push('PE/PB/PS日期为来源公布的估值日；股息率使用财务页最新市值，未提供该行情时间')
   row.note = notes.join('；')
   return row
 }
@@ -189,6 +222,7 @@ export function makeCnFundamentalRow(instrument, valuation, main) {
   // and PB_MRQ (book value). TRADE_DATE is the daily valuation date, not the
   // financial reporting date or a fabricated live quotation timestamp.
   row.pe = numeric(valuation.PE_TTM)
+  row.pb = priceToBook(valuation.PB_MRQ)
   row.ps = positive(valuation.PS_TTM)
   row.valuationDate = dateOnly(valuation.TRADE_DATE)
   row.reportDate = dateOnly(main.REPORT_DATE)
@@ -199,9 +233,10 @@ export function makeCnFundamentalRow(instrument, valuation, main) {
   const notes = []
   if (row.pe !== null && row.pe <= 0) notes.push('近12个月亏损，市盈率不适用')
   if (row.pe === null) notes.push('来源暂未提供TTM市盈率')
+  addBookValueNote(row, notes)
   if (row.ps === null) notes.push('来源暂未提供TTM市销率')
   notes.push('来源未提供近12个月股息率，缺失不代表零股息')
-  notes.push('PE/PS使用来源估值日的TTM口径，交易日与财报期分别列示')
+  notes.push('PE/PS为TTM口径，PB为最新财报净资产口径；交易日与财报期分别列示')
   row.note = notes.join('；')
   return row
 }

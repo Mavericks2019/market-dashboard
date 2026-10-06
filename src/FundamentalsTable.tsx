@@ -3,9 +3,9 @@ import { RefreshCw } from 'lucide-react'
 import { formatChinaTime } from './marketTime'
 import type { FundamentalRow, FundamentalsResponse, Market } from './types'
 
-function metric(value: number | null | undefined, unit: string, isPe = false) {
+function metric(value: number | null | undefined, unit: string, positiveOnly = false) {
   if (value == null || !Number.isFinite(value)) return '暂无'
-  if (isPe && value <= 0) return '不适用'
+  if (positiveOnly && value <= 0) return '不适用'
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${unit}`
 }
 
@@ -50,7 +50,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
   const rows: FundamentalRow[] = data?.rows ?? companies.map((company) => ({
     key: company.key, symbol: company.symbol, name: company.name, englishName: company.englishName,
     watchStance: company.watchStance,
-    pe: null, ps: null, dividendYield: null, marketTime: null,
+    pe: null, pb: null, ps: null, dividendYield: null, marketTime: null,
   }))
 
   return (
@@ -68,6 +68,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
           <thead><tr>
             <th scope="col">企业 / 股票代码</th>
             <th scope="col">市盈率 <span>P/E</span></th>
+            <th scope="col">市净率 <span>P/B</span></th>
             <th scope="col">市销率 <span>P/S</span></th>
             <th scope="col">股息率 <span>Dividend yield</span></th>
             <th scope="col">估值日期 / 财报期 / 来源</th>
@@ -76,6 +77,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
             {rows.map((row) => <tr key={row.key}>
               <th scope="row"><div className="watch-stance-cell"><strong>{row.name}</strong>{row.watchStance === 'bearish' && <span className="watch-stance-tag">看空关注</span>}</div><small>{row.englishName} · {row.symbol}</small>{row.note && <details className="valuation-details"><summary>口径说明</summary><span className="valuation-note">{row.note}</span></details>}</th>
               <td><strong>{metric(row.pe, ' 倍', true)}</strong>{row.peBasis && <small>{row.peBasis}</small>}</td>
+              <td><strong>{metric(row.pb, ' 倍', true)}</strong>{row.pbBasis && <small>{row.pbBasis}</small>}</td>
               <td><strong>{metric(row.ps, ' 倍')}</strong>{row.psBasis && <small>{row.psBasis}</small>}</td>
               <td><strong>{metric(row.dividendYield, '%')}</strong>{row.dividendBasis && <small>{row.dividendBasis}</small>}</td>
               <td className="valuation-source"><span>{row.valuationDate || (row.marketTime ? formatChinaTime(row.marketTime, true) : '估值日期未披露')}</span>
@@ -84,11 +86,11 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
                 {(row.isStale || error) && <small className="valuation-warning">更新暂不可用 · 上次结果</small>}
               </td>
             </tr>)}
-            {!rows.length && <tr><td colSpan={5}>{loading ? '正在加载企业估值…' : '暂无企业估值数据'}</td></tr>}
+            {!rows.length && <tr><td colSpan={6}>{loading ? '正在加载企业估值…' : '暂无企业估值数据'}</td></tr>}
           </tbody>
         </table>
       </div>
-      <p className="valuation-explainer">市盈率 = 股价 / 每股盈利；市销率 = 市值 / 营业收入；股息率 = 每股年度股息 / 股价。TTM 表示过去12个月，具体口径见各项标注。“暂无”表示数据缺失，0.00% 表示来源明确披露为零。</p>
+      <p className="valuation-explainer">市盈率 = 股价 / 每股盈利；市净率 = 股价 / 每股净资产；市销率 = 市值 / 营业收入；股息率 = 每股年度股息 / 股价。TTM 表示过去12个月，MRQ 表示最新财报期。市盈率或市净率非正时显示“不适用”；“暂无”表示数据缺失，0.00% 表示来源明确披露为零。</p>
     </section>
   )
 }

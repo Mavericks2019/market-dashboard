@@ -115,10 +115,12 @@ test('NVIDIA TTM follows actual fiscal-year boundaries while aligning standardiz
   assert.equal(calculateTrailingRevenue(mislabeledQuarter, options), null)
 })
 
-test('US ratios preserve negative PE, missing dividends and unknown quote time', () => {
-  const main = { SECUCODE: google.secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', TOTAL_MARKET_CAP: 2300, PE_TTM: -5, DIVIDEND_RATE: null, PB: 123 }
+test('US ratios use PB distinctly from PS and preserve unknown quote time', () => {
+  const main = { SECUCODE: google.secucode, STD_REPORT_DATE: '2026-06-30', REPORT_DATE_ZCB: '2026-07-03', CURRENCY_ABBR: 'USD', TOTAL_MARKET_CAP: 2300, PE_TTM: -5, DIVIDEND_RATE: null, PB: 123, PB_MRQ: 456 }
   const row = makeUsFundamentalRow(google, main, incomeRows)
   assert.equal(row.pe, -5)
+  assert.equal(row.pb, 123)
+  assert.match(row.pbBasis, /MRQ.*2026-07-03/)
   assert.equal(row.ps, 10)
   assert.equal(row.dividendYield, null)
   assert.equal(row.marketTime, null)
@@ -131,11 +133,13 @@ test('US ratios preserve negative PE, missing dividends and unknown quote time',
 })
 
 test('HK yield uses explicitly HKD dividends and a same-source HKD price; PB never substitutes PS', () => {
-  const valuation = { SECUCODE: hsbc.secucode, CORRE_SECUCODE: hsbc.secucode, PE_TTM: 13, PS_TTM: 4, PB_MQR: 999, REPORT_DATE: '2026-10-05' }
+  const valuation = { SECUCODE: hsbc.secucode, CORRE_SECUCODE: hsbc.secucode, PE_TTM: 13, PS_TTM: 4, PB_MQR: 1.894397683384, PB_MRQ: 888, PB_LYR: 1.860174317066, REPORT_DATE: '2026-10-05' }
   const main = { SECUCODE: hsbc.secucode, REPORT_DATE: '2026-06-30', IS_CNY_CODE: '0', TOTAL_MARKET_CAP: 150000, ISSUED_COMMON_SHARES: 1000, DIVIDEND_TTM: 6 }
   const row = makeHkFundamentalRow(hsbc, valuation, main)
   assert.equal(row.dividendYield, 4)
   assert.equal(row.ps, 4)
+  assert.equal(row.pb, 1.894397683384)
+  assert.match(row.pbBasis, /MRQ/)
   assert.equal(row.valuationDate, '2026-10-05')
   assert.equal(row.reportDate, '2026-06-30')
   assert.equal(row.marketTime, null)
@@ -153,6 +157,8 @@ test('A-share TTM ratios retain their valuation date, separate financial period 
   const main = { SECUCODE: unitree.secucode, REPORT_DATE: '2026-06-30 00:00:00' }
   const row = makeCnFundamentalRow(unitree, valuation, main)
   assert.equal(row.pe, 311.81079117)
+  assert.equal(row.pb, 63.25406282)
+  assert.match(row.pbBasis, /MRQ/)
   assert.equal(row.ps, 87.7594764)
   assert.equal(row.dividendYield, null)
   assert.equal(row.valuationDate, '2026-09-30')
@@ -164,6 +170,34 @@ test('A-share TTM ratios retain their valuation date, separate financial period 
   assert.equal(makeCnFundamentalRow(unitree, { ...valuation, PE_TTM: -5 }, main).pe, -5)
   assert.throws(() => makeCnFundamentalRow(unitree, { ...valuation, SECUCODE: 'OTHER.SH' }, main))
   assert.throws(() => makeCnFundamentalRow(unitree, valuation, { ...main, SECUCODE: 'OTHER.SH' }))
+})
+
+test('P/B preserves negative equity and distinguishes unavailable values from valid ratios', () => {
+  const makers = [
+    (pb) => makeUsFundamentalRow(google, { SECUCODE: google.secucode, PB: pb }, []),
+    (pb) => makeHkFundamentalRow(hsbc, { SECUCODE: hsbc.secucode, CORRE_SECUCODE: hsbc.secucode, PB_MQR: pb }, { SECUCODE: hsbc.secucode }),
+    (pb) => makeCnFundamentalRow(unitree, { SECUCODE: unitree.secucode, PB_MRQ: pb }, { SECUCODE: unitree.secucode }),
+  ]
+  for (const make of makers) {
+    assert.equal(make('1.89').pb, 1.89)
+    const negative = make(-161.2)
+    assert.equal(negative.pb, -161.2)
+    assert.match(negative.note, /净资产不为正，市净率不适用/)
+    for (const missing of [null, undefined, '', ' ', '--', NaN, Infinity, 0, '0']) {
+      const row = make(missing)
+      assert.equal(row.pb, null)
+      assert.match(row.note, /未提供有效市净率/)
+    }
+  }
+  const mcd = FUNDAMENTAL_INSTRUMENTS.find((item) => item.key === 'MCD')
+  const main = { SECUCODE: mcd.secucode, PB: -161.201155800821, EQUITY_JYBZ: -1023000000, BVPS: -1.445647202976 }
+  assert.equal(makeUsFundamentalRow(mcd, main, []).pb, main.PB)
+  // A zero ratio is only classified as N/A when source equity confirms it.
+  const zeroWithNegativeEquity = makeUsFundamentalRow(mcd, { ...main, PB: 0 }, [])
+  assert.equal(zeroWithNegativeEquity.pb, 0)
+  assert.match(zeroWithNegativeEquity.note, /净资产不为正，市净率不适用/)
+  assert.equal(makeUsFundamentalRow(mcd, { ...main, PB: 12 }, []).pb, null)
+  assert.equal(makeUsFundamentalRow(mcd, { SECUCODE: mcd.secucode, PB: 0, BVPS: 0 }, []).pb, 0)
 })
 
 test('five-minute caching deduplicates concurrent requests and preserves successful data on failure', async () => {
@@ -181,10 +215,10 @@ test('five-minute caching deduplicates concurrent requests and preserves success
     const secucode = params.get('filter').match(/SECUCODE="([^"]+)"/)[1]
     const report = params.get('reportName')
     let data
-    if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: 311.81, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
-    else if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
+    if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: 311.81, PB_MRQ: 63.25, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
+    else if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PB_MQR: 1.89, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
     else if (report.includes('HKF10')) data = [{ SECUCODE: secucode, IS_CNY_CODE: '0', TOTAL_MARKET_CAP: 150000, ISSUED_COMMON_SHARES: 1000, DIVIDEND_TTM: 6 }]
-    else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: 10, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
+    else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: 10, PB: 6.62, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
     else data = incomeRows.map((row) => ({ ...row, SECUCODE: secucode, TOTAL_INCOME: row.OPERATE_INCOME }))
     return { ok: true, json: async () => ({ success: true, result: { data } }) }
   }
@@ -194,6 +228,9 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   assert.strictEqual(first, concurrent)
   assert.equal(first.rows.length, FUNDAMENTAL_INSTRUMENTS.length)
   assert.equal(first.rows.find((row) => row.key === 'GOOGL').ps, 10)
+  assert.equal(first.rows.find((row) => row.key === 'GOOGL').pb, 6.62)
+  assert.equal(first.rows.find((row) => row.key === 'HSBC').pb, 1.89)
+  assert.equal(first.rows.find((row) => row.key === 'UNITREE').pb, 63.25)
   assert.equal(first.rows.find((row) => row.key === 'UNITREE').ps, 87.76)
   assert.equal(first.rows.find((row) => row.key === 'UNITREE').watchStance, 'bearish')
   time = 299_999
@@ -206,6 +243,9 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   assert.equal(stale.asOf, Math.floor(time / 1000))
   assert.ok(stale.rows.every((row) => row.isStale))
   assert.equal(stale.rows.find((row) => row.key === 'GOOGL').ps, 10)
+  assert.equal(stale.rows.find((row) => row.key === 'GOOGL').pb, 6.62)
+  assert.equal(stale.rows.find((row) => row.key === 'HSBC').pb, 1.89)
+  assert.equal(stale.rows.find((row) => row.key === 'UNITREE').pb, 63.25)
   assert.match(stale.rows[0].note, /上次成功数据/)
   assert.equal(first.rows[0].isStale, false)
 })
@@ -214,7 +254,7 @@ test('first-load outage returns unavailable metrics, never fabricated zeros', as
   const fetchFundamentals = createFundamentalsService({ fetchImpl: async () => { throw new Error('offline') } })
   const result = await fetchFundamentals()
   assert.equal(result.rows.length, FUNDAMENTAL_INSTRUMENTS.length)
-  assert.ok(result.rows.every((row) => row.pe === null && row.ps === null && row.dividendYield === null))
+  assert.ok(result.rows.every((row) => row.pe === null && row.pb === null && row.ps === null && row.dividendYield === null))
   assert.ok(result.rows.every((row) => /暂时不可用/.test(row.note)))
   assert.equal(result.rows.find((row) => row.key === 'UNITREE').watchStance, 'bearish')
 })

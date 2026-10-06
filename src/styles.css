@@ -121,9 +121,9 @@ footer { width: min(1320px, calc(100% - 40px)); margin: 0 auto; padding: 16px 0 
 .valuation-refresh { display: flex; align-items: center; gap: 10px; color: #8994a4; font-size: 11px; }
 .valuation-scroll { overflow-x: auto; border: 1px solid #252b34; border-radius: 7px; }
 .valuation-scroll:focus-visible { outline: 2px solid #4ea8ff; outline-offset: 3px; }
-.valuation-table { width: 100%; min-width: 760px; border-collapse: collapse; background: #11151b; font-size: 13px; }
+.valuation-table { width: 100%; min-width: 900px; border-collapse: collapse; background: #11151b; font-size: 13px; }
 .valuation-table th, .valuation-table td { padding: 16px 18px; border-bottom: 1px solid #252b34; text-align: right; vertical-align: top; }
-.valuation-table th:first-child { text-align: left; width: 33%; }
+.valuation-table th:first-child { text-align: left; width: 28%; }
 .valuation-table thead th { background: #171c24; color: #b6c0ce; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .valuation-table thead span { display: block; margin-top: 4px; color: #778395; font-size: 10px; }
 .valuation-table tbody th { font-weight: 400; }
