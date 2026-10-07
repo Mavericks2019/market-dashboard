@@ -44,6 +44,7 @@ const instruments = {
   STAN: HK_STOCKS_INSTRUMENTS.STAN,
   TENCENT: HK_STOCKS_INSTRUMENTS.TENCENT,
   UNITREE: MAINLAND_STOCKS_INSTRUMENTS.UNITREE,
+  VANKE: MAINLAND_STOCKS_INSTRUMENTS.VANKE,
   HSTECH: HSTECH_INSTRUMENT,
   SSE: { symbol: '000001.SS', name: '上证指数', englishName: 'SSE Composite', contract: '上证综合指数', kind: 'index', unit: '点' },
   SZSE: { symbol: '399001.SZ', name: '深证成指', englishName: 'SZSE Component', contract: '深证成份指数', kind: 'index', unit: '点' },
@@ -621,7 +622,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD', 'UNITREE'].includes(key)) return [{
+      if (Object.hasOwn(MAINLAND_STOCKS_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

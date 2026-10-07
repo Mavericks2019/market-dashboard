@@ -21,6 +21,7 @@ export const FUNDAMENTAL_INSTRUMENTS = [
   { key: 'STAN', symbol: '02888.HK', secucode: '02888.HK', name: '渣打集团', englishName: 'Standard Chartered', region: 'HK', bank: true },
   { key: 'TENCENT', symbol: '00700.HK', secucode: '00700.HK', name: '腾讯控股', englishName: 'Tencent Holdings', region: 'HK' },
   { key: 'UNITREE', symbol: '688836.SH', secucode: '688836.SH', name: '宇树科技', englishName: 'Unitree Robotics', region: 'CN', watchStance: 'bearish' },
+  { key: 'VANKE', symbol: '000002.SZ', secucode: '000002.SZ', name: '万科A', englishName: 'China Vanke A', region: 'CN', watchStance: 'bearish' },
 ]
 
 function numeric(value) {
@@ -301,7 +302,9 @@ export function createFundamentalsService({ fetchImpl = fetch, now = Date.now, t
         ])
         row = makeHkFundamentalRow(instrument, valuation[0], main[0])
       } else if (instrument.region === 'CN') {
-        const code = `SH${instrument.secucode.split('.')[0]}`
+        const [securityCode, exchange] = instrument.secucode.split('.')
+        if (!['SH', 'SZ'].includes(exchange)) throw new Error('不支持的A股交易所')
+        const code = `${exchange}${securityCode}`
         const [valuation, financials] = await Promise.all([
           report('RPT_VALUEANALYSIS_DET', instrument, {
             sortColumns: 'TRADE_DATE', pageSize: '1', source: 'WEB', client: 'WEB',

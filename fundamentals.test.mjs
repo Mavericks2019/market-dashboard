@@ -257,14 +257,16 @@ test('five-minute caching deduplicates concurrent requests and preserves success
     calls += 1
     if (failing) throw new Error('timeout')
     if (new URL(url).pathname.endsWith('/ZYZBAjaxNew')) {
-      assert.equal(new URL(url).searchParams.get('code'), 'SH688836')
-      return { ok: true, json: async () => ({ data: [{ SECUCODE: unitree.secucode, REPORT_DATE: '2026-06-30' }] }) }
+      const code = new URL(url).searchParams.get('code')
+      assert.ok(['SH688836', 'SZ000002'].includes(code))
+      const secucode = code === 'SZ000002' ? '000002.SZ' : unitree.secucode
+      return { ok: true, json: async () => ({ data: [{ SECUCODE: secucode, REPORT_DATE: '2026-06-30' }] }) }
     }
     const params = new URL(url).searchParams
     const secucode = params.get('filter').match(/SECUCODE="([^"]+)"/)[1]
     const report = params.get('reportName')
     let data
-    if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: 311.81, PB_MRQ: 63.25, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
+    if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: secucode === '000002.SZ' ? -3.05 : 311.81, PB_MRQ: 63.25, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
     else if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PB_MQR: 1.89, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
     else if (report.includes('HKF10')) data = [{ SECUCODE: secucode, IS_CNY_CODE: '0', TOTAL_MARKET_CAP: 150000, ISSUED_COMMON_SHARES: 1000, DIVIDEND_TTM: 6 }]
     else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: 10, PB: 6.62, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
@@ -282,6 +284,12 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   assert.equal(first.rows.find((row) => row.key === 'UNITREE').pb, 63.25)
   assert.equal(first.rows.find((row) => row.key === 'UNITREE').ps, 87.76)
   assert.equal(first.rows.find((row) => row.key === 'UNITREE').watchStance, 'bearish')
+  const vanke = first.rows.find((row) => row.key === 'VANKE')
+  assert.equal(vanke.symbol, '000002.SZ')
+  assert.equal(vanke.pe, -3.05)
+  assert.equal(vanke.reportDate, '2026-06-30')
+  assert.match(vanke.note, /亏损，市盈率不适用/)
+  assert.equal(vanke.watchStance, 'bearish')
   time = 299_999
   assert.strictEqual(await fetchFundamentals(), first)
   assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 2)

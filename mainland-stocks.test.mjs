@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createMainlandStocksAdapter, parseMainlandDailyRows, parseMainlandMinuteSessions, parseMainlandStockQuote } from './mainland-stocks.mjs'
+import { MAINLAND_STOCKS_INSTRUMENTS, createMainlandStocksAdapter, parseMainlandDailyRows, parseMainlandMinuteSessions, parseMainlandStockQuote } from './mainland-stocks.mjs'
 
 const daily = [['2026-08-19', '1100', '845', '1100', '800', '1000'], ['2026-09-29', '460', '451.02', '461.5', '450.7', '100'], ['2026-09-30', '451.99', '450.4', '459.9', '446.5', '200']]
 const quoteFields = ['宇树科技', '451.99', '451.02', '450.4', '459.9', '446.5', '450.29', '450.4', '200', ...Array(21).fill('0'), '2026-09-30', '15:34:59']
@@ -46,6 +46,30 @@ test('snapshot verifies issuer identity and retains actual quote time', () => {
   assert.equal(new Date(quote.marketTime * 1000).toISOString(), '2026-09-30T07:34:59.000Z')
   assert.throws(() => parseMainlandStockQuote(quoteText.replace('宇树科技', '另一家公司')), /身份/)
   assert.throws(() => parseMainlandStockQuote(quoteText.replace('15:34:59', '')), /时间/)
+})
+
+test('snapshot accepts source whitespace and fullwidth A while retaining issuer and symbol validation', () => {
+  const instrument = MAINLAND_STOCKS_INSTRUMENTS.VANKE
+  const fields = ['万 科Ａ', '3.80', '4.08', '4.26', '4.40', '3.67', '4.26', '4.27', '1309443983', ...Array(21).fill('0'), '2026-09-30', '16:29:15']
+  const text = `var hq_str_sz000002="${fields.join(',')}";`
+  assert.equal(parseMainlandStockQuote(text, instrument).price, 4.26)
+  assert.equal(parseMainlandStockQuote(text.replace('万 科Ａ', '万  科A'), instrument).previousClose, 4.08)
+  assert.throws(() => parseMainlandStockQuote(text.replace('万 科Ａ', '万科B'), instrument), /身份/)
+  assert.throws(() => parseMainlandStockQuote(text.replace('sz000002', 'sz000001'), instrument), /身份/)
+})
+
+test('Tencent issuer normalization still rejects another share class or security code', async () => {
+  const vankeRows = [['1991-01-29', '14.57', '14.58', '14.58', '14.57', '15'], ['2026-09-30', '3.80', '4.26', '4.40', '3.67', '13094440']]
+  const makeAdapter = (name, code) => createMainlandStocksAdapter({ fetchImpl: async (url) => {
+    if (url.includes('sinajs')) throw new Error('quote unavailable')
+    return Response.json({ code: 0, data: { sz000002: { day: vankeRows, qt: { sz000002: ['51', name, code] } } } })
+  } })
+  const market = await makeAdapter('万  科Ａ', '000002').fetchTrend('VANKE')
+  assert.equal(market.points.length, 2)
+  assert.equal(market.price, 4.26)
+  assert.match(market.dataNote, /万科深交所A股普通股/)
+  await assert.rejects(makeAdapter('万科B', '000002').fetchTrend('VANKE'), /身份/)
+  await assert.rejects(makeAdapter('万  科Ａ', '000001').fetchTrend('VANKE'), /身份/)
 })
 
 test('MAX and intraday share full IPO history while coalescing concurrent requests', async () => {

@@ -9,6 +9,11 @@ export const MAINLAND_STOCKS_INSTRUMENTS = {
     kind: 'stock', unit: 'CNY/股', currency: 'CNY', exchange: '上交所科创板', exchangeTimezone: 'Asia/Shanghai',
     precision: 2, watchStance: 'bearish', contract: '宇树科技科创板普通股', listingDate: '2026-08-19',
   },
+  VANKE: {
+    key: 'VANKE', symbol: '000002.SZ', sourceSymbol: 'sz000002', name: '万科A', englishName: 'China Vanke A',
+    kind: 'stock', unit: 'CNY/股', currency: 'CNY', exchange: '深交所', exchangeTimezone: 'Asia/Shanghai',
+    precision: 2, watchStance: 'bearish', contract: '万科深交所A股普通股', listingDate: '1991-01-29',
+  },
 }
 
 function numeric(value, positive = false) {
@@ -34,7 +39,8 @@ function sortedUnique(points) {
 }
 
 function validName(value, instrument) {
-  return typeof value === 'string' && value.replace(/[-－]W$/, '') === instrument.name
+  const normalize = (name) => name.normalize('NFKC').replace(/\s+/g, '').replace(/-W$/, '')
+  return typeof value === 'string' && normalize(value) === normalize(instrument.name)
 }
 
 function instrumentPayload(payload, instrument) {
@@ -188,7 +194,7 @@ export function createMainlandStocksAdapter({ fetchImpl = fetch, now = Date.now 
     const price = snapshot?.data.price ?? latestDay.close
     const change = previousClose === null ? null : price - previousClose
     const isStale = daily.isStale || !snapshot || snapshot.isStale || Boolean(intraday && (!minutes || minutes.isStale))
-    const notes = [`科创板普通股；历史自 ${instrument.listingDate} 上市首日起。日线为不复权价格，分红、拆股会影响跨期比较。`, '休市期间保留最近交易日行情，报价时间以来源为准。']
+    const notes = [`${instrument.contract}；历史自 ${instrument.listingDate} 上市首日起。日线为不复权价格，分红、拆股会影响跨期比较。`, '休市期间保留最近交易日行情，报价时间以来源为准。']
     if (intraday && !minutes) notes.push('分时源暂不可用，显示最近交易日的真实日线。')
     if (isStale) notes.push('部分上游刷新失败，保留最近可用数据及原始时间。')
     return {
