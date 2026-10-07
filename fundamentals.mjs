@@ -12,6 +12,7 @@ export const FUNDAMENTAL_INSTRUMENTS = [
   { key: 'BRKB', symbol: 'BRK.B', secucode: 'BRK_B.N', name: '伯克希尔哈撒韦B', englishName: 'Berkshire Hathaway B', region: 'US', insurance: true },
   { key: 'GOOGL', symbol: 'GOOGL', secucode: 'GOOGL.O', name: '谷歌A类股', englishName: 'Alphabet Class A', region: 'US' },
   { key: 'NVDA', symbol: 'NVDA', secucode: 'NVDA.O', name: '英伟达', englishName: 'NVIDIA', region: 'US' },
+  { key: 'AAPL', symbol: 'AAPL', secucode: 'AAPL.O', name: '苹果', englishName: 'Apple', region: 'US' },
   { key: 'SPCX', symbol: 'SPCX', secucode: 'SPCX.O', name: 'SpaceX', englishName: 'SpaceX Class A', region: 'US' },
   { key: 'KO', symbol: 'KO', secucode: 'KO.N', name: '可口可乐', englishName: 'The Coca-Cola Company', region: 'US' },
   { key: 'MCD', symbol: 'MCD', secucode: 'MCD.N', name: '麦当劳', englishName: "McDonald's Corporation", region: 'US' },

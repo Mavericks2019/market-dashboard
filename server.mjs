@@ -35,6 +35,7 @@ const instruments = {
   BRKB: US_INSTRUMENTS.BRKB,
   GOOGL: US_INSTRUMENTS.GOOGL,
   NVDA: US_INSTRUMENTS.NVDA,
+  AAPL: US_INSTRUMENTS.AAPL,
   SPCX: US_INSTRUMENTS.SPCX,
   KO: US_INSTRUMENTS.KO,
   MCD: US_INSTRUMENTS.MCD,
@@ -620,7 +621,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'PDD', 'UNITREE'].includes(key)) return [{
+      if (Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD', 'UNITREE'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],
