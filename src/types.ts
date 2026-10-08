@@ -10,12 +10,12 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'NF_DIV_LV50_A' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string
   contract: string
-  kind: 'futures' | 'index' | 'stock' | 'etf' | 'metal' | 'forex'
+  kind: 'futures' | 'index' | 'stock' | 'etf' | 'fund' | 'metal' | 'forex'
   unit: string
   currency: string
   exchange: string
@@ -49,6 +49,24 @@ export interface MarketsResponse {
   markets: Market[]
   errors: Array<{ key: string; message: string }>
   usCashSession?: { isOpen: boolean; phase: string; label: string; detail: string; marketDate?: string; openAt?: string; closeAt?: string }
+}
+
+export interface EtfTotalReturnResponse {
+  key: string
+  fundCode: string
+  name: string
+  baseDate: string
+  lastDate: string
+  baseValue: number
+  latestValue: number
+  totalReturnPercent: number
+  points: ChartPoint[]
+  sourceName: string
+  sourceUrl: string
+  asOf: number
+  isStale: boolean
+  note: string
+  dividendCount?: number
 }
 
 export interface FundamentalRow {

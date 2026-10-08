@@ -12,6 +12,7 @@ import { MAINLAND_INSTRUMENTS, MAINLAND_ETF_INSTRUMENTS, MAINLAND_STOCKS_INSTRUM
 import { DIVIDEND_INDEX_INSTRUMENTS, fetchDividendIndexTrend } from './dividend-indices.mjs'
 import { fetchFundamentals } from './fundamentals.mjs'
 import { fetchHousingData } from './housing-market.mjs'
+import { FUND_LINK_INSTRUMENTS, fetchEtfTotalReturn, fetchFundNavTrend } from './etf-total-return.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 4174)
@@ -46,6 +47,7 @@ const instruments = {
   UNITREE: MAINLAND_STOCKS_INSTRUMENTS.UNITREE,
   VANKE: MAINLAND_STOCKS_INSTRUMENTS.VANKE,
   ...MAINLAND_ETF_INSTRUMENTS,
+  ...FUND_LINK_INSTRUMENTS,
   HSTECH: HSTECH_INSTRUMENT,
   SSE: { symbol: '000001.SS', name: '上证指数', englishName: 'SSE Composite', contract: '上证综合指数', kind: 'index', unit: '点' },
   SZSE: { symbol: '399001.SZ', name: '深证成指', englishName: 'SZSE Component', contract: '深证成份指数', kind: 'index', unit: '点' },
@@ -587,6 +589,17 @@ app.get('/api/housing', async (_request, response) => {
   }
 })
 
+app.get('/api/etf-total-return', async (request, response) => {
+  response.set('Cache-Control', 'no-store')
+  const key = request.query.key ?? 'NF_DIV_LV50'
+  if (typeof key !== 'string' || (key !== 'NF_DIV_LV50' && !Object.hasOwn(FUND_LINK_INSTRUMENTS, key))) return response.status(400).json({ error: '暂不支持该基金的总回报数据' })
+  try {
+    return response.json(await fetchEtfTotalReturn(key))
+  } catch {
+    return response.status(502).json({ error: '红利再投资数据暂不可用，请稍后重试' })
+  }
+})
+
 app.get('/api/markets', async (request, response) => {
   const period = String(request.query.period || '1D').toUpperCase()
   if (!ranges[period]) return response.status(400).json({ error: '不支持的时间范围' })
@@ -599,6 +612,7 @@ app.get('/api/markets', async (request, response) => {
     ...keys.map((key) => {
       if (key === 'CFETS') return fetchCfetsTrend(period)
       if (key === 'USDCNY') return fetchCnyTrend(period)
+      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key)) return fetchFundNavTrend(key, period)
       if (Object.hasOwn(HK_STOCKS_INSTRUMENTS, key)) return fetchHkStockTrend(key, period)
       if (key === 'HSTECH') return fetchHstechTrend(period)
       if (Object.hasOwn(MAINLAND_INSTRUMENTS, key)) return fetchMainlandStockTrend(key, period)
@@ -623,7 +637,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
+      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key) || Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

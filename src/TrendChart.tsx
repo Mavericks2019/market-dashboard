@@ -160,10 +160,10 @@ export default function TrendChart({ market, period }: TrendChartProps) {
         >
           <div className="chart-tooltip-time">{formatTooltipTime(tooltip.point.time, market, period)}</div>
           <div className="chart-tooltip-close">
-            <span>{market.key === 'CFETS' ? '指数' : market.kind === 'forex' ? '汇率' : '收盘'}</span>
+            <span>{market.key === 'CFETS' ? '指数' : market.kind === 'fund' ? '单位净值' : market.kind === 'forex' ? '汇率' : '收盘'}</span>
             <strong>{formatTooltipNumber(tooltip.point.close, market)}</strong>
           </div>
-          {market.key !== 'CFETS' && <div className="chart-tooltip-grid">
+          {market.key !== 'CFETS' && market.kind !== 'fund' && <div className="chart-tooltip-grid">
             <span>开盘 <b>{formatTooltipNumber(tooltip.point.open, market)}</b></span>
             <span>最高 <b>{formatTooltipNumber(tooltip.point.high, market)}</b></span>
             <span>最低 <b>{formatTooltipNumber(tooltip.point.low, market)}</b></span>

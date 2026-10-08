@@ -3,6 +3,7 @@ import { Activity, AlertCircle, BarChart3, Clock3, RefreshCw, Wifi, WifiOff } fr
 import TrendChart from './TrendChart'
 import FundamentalsTable from './FundamentalsTable'
 import HousingPanel from './HousingPanel'
+import EtfTotalReturnPanel from './EtfTotalReturnPanel'
 import { formatChinaTime, formatNewYorkTime, getCashSessionState, getSessionState } from './marketTime'
 import type { Market, MarketsResponse, Period } from './types'
 import { convertCurrencyMarket, formatMarketNumber, type CurrencyDirection } from './currency'
@@ -19,7 +20,7 @@ const periods: Array<{ value: Period; label: string }> = [
 
 const marketGroups = [
   { key: 'indices', title: '指数', caption: '全球股市指数与股指期货', includes: (market: Market) => (market.kind === 'index' || market.kind === 'futures') && market.key !== 'CFETS' },
-  { key: 'etfs', title: '基金ETF', caption: '关注的场内交易基金', includes: (market: Market) => market.kind === 'etf' },
+  { key: 'etfs', title: '基金 / ETF', caption: '场内ETF与场外联接基金', includes: (market: Market) => market.kind === 'etf' || market.kind === 'fund' },
   { key: 'stocks', title: '个股', caption: '关注的上市企业', includes: (market: Market) => market.kind === 'stock' },
   { key: 'currencies', title: '货币', caption: '人民币汇率、汇率指数与黄金', includes: (market: Market) => market.kind === 'forex' || market.kind === 'metal' || market.key === 'CFETS' },
 ]
@@ -58,7 +59,7 @@ function convertGoldMarket(market: Market, unit: GoldUnit, fxRate: number | null
 function MarketCard({ market, active, onClick }: { market: Market; active: boolean; onClick: () => void }) {
   const positive = (market.change ?? 0) >= 0
   const cardLabel = market.kind === 'forex' ? market.englishName
-    : market.kind === 'etf' ? `${market.symbol} · ${market.englishName}`
+    : market.kind === 'etf' || market.kind === 'fund' ? `${market.symbol} · ${market.englishName}`
     : `${market.englishName} · ${market.kind === 'stock' || ['Asia/Hong_Kong', 'Asia/Shanghai'].includes(market.exchangeTimezone) ? market.symbol : market.key}`
   return (
     <button className={`market-card ${active ? 'active' : ''}${market.watchStance === 'bearish' ? ' bearish' : ''}`} onClick={onClick} aria-pressed={active}>
@@ -80,7 +81,7 @@ function MarketCard({ market, active, onClick }: { market: Market; active: boole
         <b>{market.changePercent === null ? '--' : signed.format(market.changePercent)}%</b>
       </span>
       <span className="range-row">
-        {market.key === 'CFETS' ? <span>{market.frequency || '官方定期发布'} · {formatHistoryDate(market.marketTime)}</span> : <>
+        {market.kind === 'fund' ? <span>每日净值 · {formatHistoryDate(market.marketTime)}</span> : market.key === 'CFETS' ? <span>{market.frequency || '官方定期发布'} · {formatHistoryDate(market.marketTime)}</span> : <>
           <span>低 {formatMarketNumber(market.dayLow, market)}</span>
           <span>高 {formatMarketNumber(market.dayHigh, market)}</span>
         </>}
@@ -102,6 +103,11 @@ export default function App() {
   const [goldUnit, setGoldUnit] = useState<GoldUnit>('USD')
   const [currencyDirection, setCurrencyDirection] = useState<CurrencyDirection>('CNYUSD')
   const requestIdRef = useRef(0)
+
+  function selectMarket(key: Market['key']) {
+    if (key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
+    setSelectedKey(key)
+  }
 
   const load = useCallback(async (silent = false) => {
     const requestId = ++requestIdRef.current
@@ -150,6 +156,7 @@ export default function App() {
     () => displayMarkets.find((market) => market.key === selectedKey) || displayMarkets[0],
     [displayMarkets, selectedKey],
   )
+  const showTotalReturn = activeMarket?.key === 'NF_DIV_LV50' || activeMarket?.key === 'NF_DIV_LV50_A'
   const futuresSession = getSessionState(now)
   const cashSession = data?.usCashSession
     ? {
@@ -160,6 +167,8 @@ export default function App() {
     : getCashSessionState(now)
   const session = activeMarket?.key === 'CFETS'
     ? { phase: 'weekend', label: '人民币汇率指数', detail: activeMarket.frequency || '官方定期发布' }
+    : activeMarket?.kind === 'fund'
+      ? { phase: 'weekend', label: '场外基金', detail: '每日披露净值 · 以最新净值日期为准' }
     : activeMarket?.exchangeTimezone === 'Asia/Hong_Kong'
       ? { phase: 'weekend', label: '港股行情', detail: '香港市场 · 以行情源报价时间为准' }
     : (activeMarket?.kind === 'stock' || activeMarket?.kind === 'index' || activeMarket?.kind === 'etf') && activeMarket.exchangeTimezone === 'Asia/Shanghai'
@@ -219,7 +228,7 @@ export default function App() {
                 </div>
                 <div className="market-grid">
                   {regularMarkets.map((market) => (
-                    <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => setSelectedKey(market.key)} />
+                    <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => selectMarket(market.key)} />
                   ))}
                 </div>
                 {bearishMarkets.length > 0 && <section className="bearish-watch-group" aria-labelledby="bearish-watch-title">
@@ -228,7 +237,7 @@ export default function App() {
                     <p className="market-group-caption">按你的看空观点单独跟踪</p>
                   </div>
                   <div className="market-grid">
-                    {bearishMarkets.map((market) => <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => setSelectedKey(market.key)} />)}
+                    {bearishMarkets.map((market) => <MarketCard key={market.key} market={market} active={activeMarket?.key === market.key} onClick={() => selectMarket(market.key)} />)}
                   </div>
                 </section>}
               </section>
@@ -239,11 +248,12 @@ export default function App() {
         )}
 
         {activeMarket && (
+          <div className={showTotalReturn ? 'etf-chart-comparison' : undefined}>
           <section className="chart-panel">
             <div className="chart-header">
               <div className="chart-title">
                 <span className="ticker-icon"><Activity size={18} /></span>
-                <div><p>{activeMarket.symbol} · {activeMarket.exchange} · {activeMarket.unit}</p><h3>{activeMarket.name} {activeMarket.englishName}走势</h3></div>
+                <div><p>{activeMarket.symbol} · {activeMarket.exchange} · {activeMarket.unit}</p><h3>{activeMarket.name} {activeMarket.englishName}走势</h3>{activeMarket.kind === 'etf' && <span className="chart-basis-label">场内价格 · 不复权</span>}{activeMarket.kind === 'fund' && <span className="chart-basis-label">单位净值 · 未计入现金分红再投资</span>}</div>
               </div>
               <div className="chart-actions">
                 {activeMarket.key === 'XAU' && (
@@ -260,16 +270,16 @@ export default function App() {
                 )}
                 <div className="period-control" role="group" aria-label="走势图时间范围">
                   {periods.map((item) => (
-                    <button key={item.value} className={period === item.value ? 'selected' : ''} onClick={() => setPeriod(item.value)}>{activeMarket.key === 'CFETS' && item.value === '1D' ? '最新' : item.label}</button>
+                    <button key={item.value} className={period === item.value ? 'selected' : ''} onClick={() => setPeriod(item.value)}>{(activeMarket.key === 'CFETS' || activeMarket.kind === 'fund') && item.value === '1D' ? '最新' : item.label}</button>
                   ))}
                 </div>
               </div>
             </div>
             <div className="chart-meta">
-              <div><span>最新（{activeMarket.unit}）</span><strong>{formatMarketNumber(activeMarket.price, activeMarket)}</strong></div>
-              <div><span>{activeMarket.key === 'CFETS' ? '上期' : '前收'}（{activeMarket.unit}）</span><strong>{formatMarketNumber(activeMarket.previousClose, activeMarket)}</strong></div>
-              <div><span>{activeMarket.key === 'CFETS' ? '发布频率' : '日内区间'}</span><strong>{activeMarket.key === 'CFETS' ? activeMarket.frequency : `${formatMarketNumber(activeMarket.dayLow, activeMarket)} – ${formatMarketNumber(activeMarket.dayHigh, activeMarket)}`}</strong></div>
-              <div><span>{activeMarket.key === 'CFETS' ? '数据日期' : '数据时间（北京时间）'}</span><strong>{activeMarket.key === 'CFETS' ? formatHistoryDate(activeMarket.marketTime) : formatChinaTime(activeMarket.marketTime, true)}</strong></div>
+              <div><span>{activeMarket.kind === 'fund' ? '最新净值' : '最新'}（{activeMarket.unit}）</span><strong>{formatMarketNumber(activeMarket.price, activeMarket)}</strong></div>
+              <div><span>{activeMarket.kind === 'fund' ? '前期净值' : activeMarket.key === 'CFETS' ? '上期' : '前收'}（{activeMarket.unit}）</span><strong>{formatMarketNumber(activeMarket.previousClose, activeMarket)}</strong></div>
+              <div><span>{activeMarket.kind === 'fund' ? '更新频率' : activeMarket.key === 'CFETS' ? '发布频率' : '日内区间'}</span><strong>{activeMarket.kind === 'fund' ? '每日净值' : activeMarket.key === 'CFETS' ? activeMarket.frequency : `${formatMarketNumber(activeMarket.dayLow, activeMarket)} – ${formatMarketNumber(activeMarket.dayHigh, activeMarket)}`}</strong></div>
+              <div><span>{activeMarket.kind === 'fund' ? '净值日期' : activeMarket.key === 'CFETS' ? '数据日期' : '数据时间（北京时间）'}</span><strong>{activeMarket.kind === 'fund' || activeMarket.key === 'CFETS' ? formatHistoryDate(activeMarket.marketTime) : formatChinaTime(activeMarket.marketTime, true)}</strong></div>
               <div><span>历史起点</span><strong>{formatHistoryDate(activeMarket.historyStart, activeMarket.kind === 'stock' ? activeMarket.exchangeTimezone : 'Asia/Shanghai')}</strong></div>
             </div>
             {(activeMarket.dataNote || activeMarket.sourceName || activeMarket.key === 'USDCNY') && (
@@ -281,6 +291,8 @@ export default function App() {
             )}
             <TrendChart market={activeMarket} period={period} />
           </section>
+          {showTotalReturn && <EtfTotalReturnPanel key={activeMarket.key} instrumentKey={activeMarket.key} fundCode={activeMarket.symbol.split('.')[0]} name={activeMarket.name} isOffExchange={activeMarket.kind === 'fund'} />}
+          </div>
         )}
         <HousingPanel />
         <FundamentalsTable companies={displayMarkets.filter((market) => market.kind === 'stock')} />

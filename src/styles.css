@@ -116,6 +116,39 @@ main { min-height: 100vh; background: linear-gradient(180deg, #0c0f14 0, #090b0f
 .empty-state p { margin: 0 0 16px; font-size: 12px; }
 .empty-state button { color: #08100c; background: #2fc47c; border: 0; border-radius: 4px; padding: 8px 14px; cursor: pointer; }
 
+.etf-chart-comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 28px; margin-top: 28px; padding-top: 24px; border-top: 1px solid #262c35; }
+.etf-chart-comparison > .chart-panel { min-width: 0; margin-top: 0; padding-top: 0; border-top: 0; display: flex; flex-direction: column; }
+.etf-chart-comparison > .chart-panel + .chart-panel { padding-left: 28px; border-left: 1px solid #262c35; }
+.etf-chart-comparison .chart-header { min-height: 130px; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.etf-chart-comparison .chart-title { align-items: flex-start; }
+.etf-chart-comparison .chart-title h3 { font-size: 14px; line-height: 1.6; }
+.etf-chart-comparison .chart-actions { justify-content: flex-start; }
+.etf-chart-comparison .period-control button { min-width: 37px; padding: 0 7px; }
+.etf-chart-comparison .chart-meta { min-height: 94px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
+.etf-chart-comparison .chart-meta strong { line-height: 1.5; }
+.etf-chart-comparison .market-note { order: 5; }
+.chart-basis-label { display: block; margin-top: 5px; color: #9aa7b6; font-size: 10px; line-height: 1.6; }
+.total-return-icon { color: #78aafa; background: #151c29; border-color: #2b3c55; }
+.total-return-meta strong.up { color: #f06470; }
+.total-return-meta strong.down { color: #31c981; }
+.total-return-tooltip-yield { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; color: #8995a6; }
+.total-return-tooltip-yield b { color: #cbd1d9; font-weight: 500; font-variant-numeric: tabular-nums; }
+.chart-interaction-note { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: #798697; font-size: 10px; line-height: 1.7; }
+.chart-interaction-note button { padding: 0; color: #93baf2; border: 0; background: none; font: inherit; cursor: pointer; }
+.chart-interaction-note button:hover { color: #c4dbfa; }
+.total-return-notes { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 12px; color: #8b96a6; font-size: 11px; line-height: 1.8; }
+.total-return-notes a { color: #7cbae7; }
+.total-return-method summary { color: #91a8be; cursor: pointer; }
+.total-return-method p { margin: 6px 0 0; }
+.total-return-chart-shell .chart-empty { gap: 14px; justify-items: center; padding: 20px; text-align: center; line-height: 1.8; }
+.total-return-retry { padding: 7px 14px; color: #c7dcf7; background: #1b2a3e; border: 1px solid #3a567d; border-radius: 4px; font: inherit; cursor: pointer; }
+
+@media (max-width: 1080px) {
+  .etf-chart-comparison { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .etf-chart-comparison > .chart-panel + .chart-panel { padding-left: 0; padding-top: 24px; border-left: 0; border-top: 1px solid #262c35; }
+  .etf-chart-comparison .chart-header { min-height: 0; }
+}
+
 footer { width: min(1320px, calc(100% - 40px)); margin: 0 auto; padding: 16px 0 24px; display: flex; justify-content: space-between; color: #596270; border-top: 1px solid #1b2027; font-size: 9px; }
 
 .fundamentals-panel { margin-top: 32px; padding-top: 26px; border-top: 1px solid #262c35; }
@@ -162,6 +195,8 @@ footer { width: min(1320px, calc(100% - 40px)); margin: 0 auto; padding: 16px 0 
   .market-price { font-size: 26px; }
   .range-row { margin-top: 14px; }
   .chart-panel { margin-top: 22px; }
+  .etf-chart-comparison { margin-top: 22px; }
+  .etf-chart-comparison .chart-meta { grid-template-columns: 1fr 1fr; }
   .chart-header { align-items: stretch; flex-direction: column; gap: 14px; }
   .chart-actions { justify-content: space-between; }
   .ticker-icon { display: none; }
