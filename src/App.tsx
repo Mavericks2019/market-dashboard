@@ -102,7 +102,7 @@ export default function App() {
   const [period, setPeriod] = useState<Period>('MAX')
   const [now, setNow] = useState(new Date())
   const [goldUnit, setGoldUnit] = useState<GoldUnit>('USD')
-  const [currencyDirection, setCurrencyDirection] = useState<CurrencyDirection>('CNYUSD')
+  const [currencyDirection, setCurrencyDirection] = useState<CurrencyDirection>('USDCNY')
 
   function selectMarket(key: Market['key']) {
     if (key === 'HXC' || key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
@@ -246,8 +246,8 @@ export default function App() {
                 )}
                 {activeMarket.key === 'USDCNY' && (
                   <div className="unit-control" role="group" aria-label="人民币美元报价方向">
-                    <button className={currencyDirection === 'CNYUSD' ? 'selected' : ''} aria-pressed={currencyDirection === 'CNYUSD'} onClick={() => setCurrencyDirection('CNYUSD')}>人民币 → 美元</button>
                     <button className={currencyDirection === 'USDCNY' ? 'selected' : ''} aria-pressed={currencyDirection === 'USDCNY'} onClick={() => setCurrencyDirection('USDCNY')}>美元 → 人民币</button>
+                    <button className={currencyDirection === 'CNYUSD' ? 'selected' : ''} aria-pressed={currencyDirection === 'CNYUSD'} onClick={() => setCurrencyDirection('CNYUSD')}>人民币 → 美元</button>
                   </div>
                 )}
                 <div className="period-control" role="group" aria-label="走势图时间范围">
