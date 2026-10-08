@@ -143,7 +143,7 @@ test('cache coalesces simultaneous index/future requests and registry accepts on
   assert.equal(calls, 1)
 })
 
-test('refresh failure retains a complete snapshot and its original timestamp', async () => {
+test('refresh failure retains a complete snapshot and separates retrieval time from request completion', async () => {
   let now = AT
   let calls = 0
   const adapter = createIndexConstituentsAdapter({ now: () => now, fetchImpl: async () => response(++calls === 1 ? nasdaq() : { ...nasdaq(), iTotalRecords: 101 }) })
@@ -152,7 +152,8 @@ test('refresh failure retains a complete snapshot and its original timestamp', a
   const stale = await adapter.fetchIndexConstituents('NDX')
   assert.equal(stale.isStale, true)
   assert.equal(stale.total, 100)
-  assert.equal(stale.asOf, initial.asOf)
+  assert.equal(stale.asOf, now / 1000)
+  assert.equal(stale.fetchedAt, initial.fetchedAt)
   assert.equal(stale.holdingsDate, initial.holdingsDate)
   assert.match(stale.note, /刷新失败/)
 })
@@ -176,4 +177,67 @@ test('Nasdaq skips unpublished dates with exact zero totals only', async () => {
   const result = await adapter.fetchIndexConstituents('NDX')
   assert.deepEqual(requestedDates, ['2026-10-08', '2026-10-07'])
   assert.equal(result.holdingsDate, '2026-10-07')
+})
+
+test('manual membership refresh bypasses six-hour cache and coalesces index/future requests', async () => {
+  let clock = AT
+  let calls = 0
+  let unblock
+  const wait = new Promise((resolve) => { unblock = resolve })
+  const adapter = createIndexConstituentsAdapter({ now: () => clock, fetchImpl: async () => {
+    const call = ++calls
+    if (call > 1) await wait
+    const payload = nasdaq()
+    if (call > 1) payload.aaData[0] = { Symbol: 'NEW', Name: 'New member' }
+    return response(payload)
+  } })
+  const initial = await adapter.fetchIndexConstituents('NDX')
+  clock += 60_000
+  const cached = await adapter.fetchIndexConstituents('NDX')
+  assert.equal(calls, 1)
+  assert.equal(cached.fetchedAt, initial.fetchedAt)
+  const forced = adapter.fetchIndexConstituents('NQ', { force: true })
+  const duplicate = adapter.fetchIndexConstituents('NDX', { force: true })
+  const normal = adapter.fetchIndexConstituents('NDX')
+  clock += 1000
+  unblock()
+  const results = await Promise.all([forced, duplicate, normal])
+  assert.equal(calls, 2)
+  for (const result of results) {
+    assert.equal(result.rows[0].symbol, 'NEW')
+    assert.equal(result.fetchedAt, clock / 1000)
+    assert.equal(result.asOf, clock / 1000)
+    assert.equal(result.holdingsDate, '2026-10-08')
+    assert.equal(result.isStale, false)
+  }
+  assert.equal(adapter.getConstituent('US:NEW').name, 'New member')
+})
+
+test('forced refresh retains the last complete membership when source dates regress and can retry immediately', async () => {
+  let clock = AT
+  let sourceDate = '2026-10-08'
+  let calls = 0
+  const adapter = createIndexConstituentsAdapter({ now: () => clock, fetchImpl: async () => {
+    calls++
+    return response({ code: 200, total: 100, data: { total: 100, rows: Array.from({ length: 100 }, (_, i) => ({
+      dateStr: sourceDate, seccode: String(300001 + i), secname: `Company ${sourceDate} ${i}`,
+    })) } })
+  } })
+  const initial = await adapter.fetchIndexConstituents('ChiNext')
+  clock += 1000
+  sourceDate = '2026-10-07'
+  const stale = await adapter.fetchIndexConstituents('ChiNext', { force: true })
+  assert.equal(stale.isStale, true)
+  assert.equal(stale.holdingsDate, initial.holdingsDate)
+  assert.equal(stale.fetchedAt, initial.fetchedAt)
+  assert.equal(stale.asOf, clock / 1000)
+  assert.deepEqual(stale.rows, initial.rows)
+  assert.match(stale.reason, /日期倒退/)
+  assert.equal(adapter.getConstituent('CN:300001').name, initial.rows[0].name)
+  sourceDate = '2026-10-08'
+  const recovered = await adapter.fetchIndexConstituents('ChiNext', { force: true })
+  assert.equal(calls, 3)
+  assert.equal(recovered.isStale, false)
+  assert.equal(recovered.reason, undefined)
+  assert.equal(recovered.fetchedAt, clock / 1000)
 })

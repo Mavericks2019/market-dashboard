@@ -282,27 +282,29 @@ export function createIndexConstituentsAdapter({ fetchImpl = fetch, now = Date.n
     }
     fail('当前尚无经完整性验证的公开成分源')
   }
-  async function canonical(key) {
+  async function canonical(key, force) {
     if (!Object.hasOwn(INDEX_CONSTITUENTS, key)) fail('不支持该指数')
     const config = INDEX_CONSTITUENTS[key]
     const previous = cache.get(key)
-    if (previous && now() < previous.expiresAt) return previous.value
     if (pending.has(key)) return pending.get(key)
+    if (!force && previous && now() < previous.expiresAt) return previous.value
     const task = Promise.resolve().then(async () => {
       let value
       try {
         const result = await retrieve(config)
         if (Date.parse(result.holdingsDate ?? result.fileUpdatedDate) > now() + DAY) fail('成分日期在未来')
         if (previous?.value.holdingsDate && result.holdingsDate && result.holdingsDate < previous.value.holdingsDate) fail('成分日期倒退')
+        if (previous?.value.fileUpdatedDate && result.fileUpdatedDate && result.fileUpdatedDate < previous.value.fileUpdatedDate) fail('成分文件日期倒退')
         const isStale = now() - Date.parse(result.holdingsDate ?? result.fileUpdatedDate) > 45 * DAY
-        value = { key, indexName: config.name, indexSymbol: config.symbol, asOf: Math.floor(now() / 1000), ...result, total: result.rows.length, isStale }
+        const fetchedAt = Math.floor(now() / 1000)
+        value = { key, indexName: config.name, indexSymbol: config.symbol, ...result, asOf: fetchedAt, fetchedAt, total: result.rows.length, isStale }
         for (const row of value.rows) registry.set(row.key, Object.freeze({ ...row }))
         cache.set(key, { value, expiresAt: now() + CACHE_TTL })
       } catch (reason) {
         const error = reason instanceof Error ? reason.message : '成分数据暂不可用'
         const staleNote = '刷新失败，保留最近成功的完整名单。'
-        value = previous?.value.rows.length ? { ...previous.value, isStale: true, note: previous.value.note.includes(staleNote) ? previous.value.note : `${previous.value.note} ${staleNote}` }
-          : { key, indexName: config.name, indexSymbol: config.symbol, asOf: Math.floor(now() / 1000), holdingsDate: null, total: null, sourceName: '', sourceUrl: '', isStale: false, note: '尚未取得可核验的完整成分名单。', status: 'unavailable', reason: error, rows: [] }
+        value = previous?.value.rows.length ? { ...previous.value, isStale: true, reason: error, note: previous.value.note.includes(staleNote) ? previous.value.note : `${previous.value.note} ${staleNote}` }
+          : { key, indexName: config.name, indexSymbol: config.symbol, asOf: Math.floor(now() / 1000), fetchedAt: null, holdingsDate: null, total: null, sourceName: '', sourceUrl: '', isStale: false, note: '尚未取得可核验的完整成分名单。', status: 'unavailable', reason: error, rows: [] }
         cache.set(key, { value, expiresAt: now() + RETRY_TTL })
       } finally { pending.delete(key) }
       return value
@@ -310,10 +312,12 @@ export function createIndexConstituentsAdapter({ fetchImpl = fetch, now = Date.n
     pending.set(key, task)
     return task
   }
-  async function fetchIndexConstituents(key) {
+  async function fetchIndexConstituents(key, { force = false } = {}) {
     const indexKey = ALIASES[key] ?? key
-    const result = await canonical(indexKey)
-    return key === indexKey ? result : { ...result, key, note: `该股指期货对应${result.indexName}的成分股。${result.note}` }
+    const result = await canonical(indexKey, force)
+    // Request completion, successful retrieval and the source's membership
+    // date are separate clocks. A failed refresh never renews fetchedAt.
+    return { ...result, asOf: Math.floor(now() / 1000), ...(key === indexKey ? {} : { key, note: `该股指期货对应${result.indexName}的成分股。${result.note}` }) }
   }
   return { fetchIndexConstituents, getConstituent: (key) => registry.get(key) ?? null }
 }

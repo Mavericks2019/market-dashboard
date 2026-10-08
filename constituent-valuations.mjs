@@ -10,8 +10,9 @@ import { fetchCnyQuote } from './cny-market.mjs'
 
 const QUOTES = 'https://push2.eastmoney.com/api/qt/ulist.np/get'
 const REPORTS = 'https://datacenter.eastmoney.com/securities/api/data/v1/get'
-const TTL = 15 * 60_000
+const TTL = 60_000
 const RETRY = 60_000
+const SYMBOL_TTL = 24 * 60 * 60_000
 
 function number(value) {
   if (!['number', 'string'].includes(typeof value) || (typeof value === 'string' && !value.trim())) return null
@@ -103,9 +104,11 @@ export function makeConstituentValuation(company, quote, secid, now = Date.now()
   return row
 }
 
-export function createConstituentValuationService({ fetchImpl = fetch, fetchUsdCny = fetchCnyQuote, now = Date.now, ttl = TTL } = {}) {
+export function createConstituentValuationService({ fetchImpl = fetch, fetchUsdCny = fetchCnyQuote, now = Date.now, ttl = TTL, symbolTtl = SYMBOL_TTL } = {}) {
   const cache = new Map()
   const pending = new Map()
+  const symbols = new Map()
+  const symbolPending = new Map()
   let active = 0
   const queue = []
 
@@ -122,25 +125,45 @@ export function createConstituentValuationService({ fetchImpl = fetch, fetchUsdC
     }
   }
 
+  async function lookupUsSymbols(companies) {
+    const us = companies.filter((company) => company.market === 'US' && /^[A-Z][A-Z0-9._-]{0,20}$/.test(company.symbol))
+    const missing = [...new Map(us.filter((company) => !(symbols.get(company.symbol)?.expires > now()) && !symbolPending.has(company.symbol)).map((company) => [company.symbol, company])).values()]
+    if (missing.length) {
+      const task = Promise.resolve().then(async () => {
+        const query = new URLSearchParams({
+          reportName: 'RPT_USF10_DATA_MAININDICATOR', columns: 'SECUCODE,SECURITY_CODE',
+          filter: `(SECURITY_CODE in (${missing.map((company) => `"${company.symbol.replaceAll('.', '_')}"`).join(',')}))`,
+          pageSize: '100', pageNumber: '1', source: 'F10', client: 'PC',
+        })
+        let main = null
+        try {
+          const body = await json(`${REPORTS}?${query}`)
+          if (body.success === true && Array.isArray(body.result?.data)) main = body.result.data
+        } catch { /* A failed symbol lookup does not guess a US exchange. */ }
+        for (const company of missing) {
+          const matches = main?.filter((row) => row.SECURITY_CODE === company.symbol.replaceAll('.', '_')) || []
+          const secid = quoteSecid(company, matches.length === 1 ? matches[0] : null)
+          // Listing identity changes infrequently. Quote refreshes must not
+          // re-download financial reports, and lookup outages keep a verified ID.
+          symbols.set(company.symbol, {
+            secid: secid || symbols.get(company.symbol)?.secid || null,
+            expires: now() + (secid || main ? symbolTtl : RETRY),
+          })
+        }
+      })
+      for (const company of missing) symbolPending.set(company.symbol, task)
+      const cleanup = () => { for (const company of missing) symbolPending.delete(company.symbol) }
+      task.then(cleanup, cleanup)
+    }
+    await Promise.all([...new Set(us.map((company) => symbolPending.get(company.symbol)).filter(Boolean))])
+  }
+
   async function load(companies) {
     const result = new Map(companies.map((company) => [company.key, emptyRow(company)]))
-    const us = companies.filter((company) => company.market === 'US' && /^[A-Z][A-Z0-9._-]{0,20}$/.test(company.symbol))
-    let main = []
-    if (us.length) {
-      const query = new URLSearchParams({
-        reportName: 'RPT_USF10_DATA_MAININDICATOR', columns: 'SECUCODE,SECURITY_CODE',
-        filter: `(SECURITY_CODE in (${us.map((company) => `"${company.symbol.replaceAll('.', '_')}"`).join(',')}))`,
-        pageSize: '100', pageNumber: '1', source: 'F10', client: 'PC',
-      })
-      try {
-        const body = await json(`${REPORTS}?${query}`)
-        if (body.success === true && Array.isArray(body.result?.data)) main = body.result.data
-      } catch { /* A failed symbol lookup does not guess a US exchange. */ }
-    }
+    await lookupUsSymbols(companies)
     const securities = new Map()
     for (const company of companies) {
-      const matches = main.filter((row) => row.SECURITY_CODE === company.symbol.replaceAll('.', '_'))
-      const secid = quoteSecid(company, matches.length === 1 ? matches[0] : null)
+      const secid = company.market === 'US' ? symbols.get(company.symbol)?.secid : quoteSecid(company)
       if (secid) securities.set(company.key, secid)
       else result.set(company.key, emptyRow(company, '尚未核实此成分股在数据源中的上市代码，四项指标暂缺；不以其他上市地或存托凭证的估值替代。'))
     }
@@ -165,16 +188,27 @@ export function createConstituentValuationService({ fetchImpl = fetch, fetchUsdC
       let row = result.get(company.key)
       const available = [row.pe, row.pb, row.ps, row.dividendYield, row.marketCap].some((value) => value !== null)
       const prior = cache.get(company.key)
-      if (!available && prior?.good) row = { ...prior.row, isStale: true, note: `${prior.row.note} 本次获取失败，保留上次成功数据。` }
-      cache.set(company.key, { row, good: available || prior?.good, expires: now() + (available ? ttl : RETRY) })
+      const lastGood = prior?.lastGood
+      let fallbackReason = ''
+      if (lastGood) {
+        if (!available) fallbackReason = '本次获取失败，保留上次成功数据。'
+        else if (lastGood.marketTime !== null && (row.marketTime === null || row.marketTime < lastGood.marketTime)) {
+          fallbackReason = row.marketTime === null ? '本次行情时间无法核实，保留上次成功数据。' : '上游返回较早行情，保留已取得的较新数据。'
+        } else if (lastGood.marketCap !== null && row.marketCap === null) fallbackReason = '本次总市值缺失，保留上次完整行情及其原始时间。'
+      }
+      if (fallbackReason) row = { ...lastGood, isStale: true, note: `${lastGood.note} ${fallbackReason}` }
+      cache.set(company.key, {
+        row, lastGood: available && !fallbackReason ? row : lastGood,
+        expires: now() + (available && !fallbackReason ? ttl : RETRY),
+      })
       result.set(company.key, row)
     }
     return result
   }
 
-  return async function fetchConstituentValuations(companies) {
+  return async function fetchConstituentValuations(companies, { force = false } = {}) {
     if (!Array.isArray(companies) || companies.length > 20) throw new Error('每批最多查询20项成分股')
-    const missing = companies.filter((company) => !(cache.get(company.key)?.expires > now()) && !pending.has(company.key))
+    const missing = [...new Map(companies.filter((company) => (force || !(cache.get(company.key)?.expires > now())) && !pending.has(company.key)).map((company) => [company.key, company])).values()]
     if (missing.length) {
       const task = load(missing)
       for (const company of missing) pending.set(company.key, task)

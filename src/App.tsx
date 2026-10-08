@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { Activity, AlertCircle, BarChart3, Clock3, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import TrendChart from './TrendChart'
 import FundamentalsTable from './FundamentalsTable'
@@ -6,8 +6,10 @@ import IndexConstituentsPanel from './IndexConstituentsPanel'
 import HousingPanel from './HousingPanel'
 import EtfTotalReturnPanel from './EtfTotalReturnPanel'
 import { formatChinaTime, formatNewYorkTime, getCashSessionState, getSessionState } from './marketTime'
-import type { Market, MarketsResponse, Period } from './types'
+import type { Market, Period } from './types'
 import { convertCurrencyMarket, formatMarketNumber, type CurrencyDirection } from './currency'
+import { mergeQuoteAndHistory } from './marketData'
+import { useMarketHistory, useMarketQuotes } from './useMarketData'
 
 const periods: Array<{ value: Period; label: string }> = [
   { value: '1D', label: '日内' },
@@ -57,7 +59,7 @@ function convertGoldMarket(market: Market, unit: GoldUnit, fxRate: number | null
   }
 }
 
-function MarketCard({ market, active, onClick }: { market: Market; active: boolean; onClick: () => void }) {
+const MarketCard = memo(function MarketCard({ market, active, onClick }: { market: Market; active: boolean; onClick: () => void }) {
   const positive = (market.change ?? 0) >= 0
   const cardLabel = market.kind === 'forex' ? market.englishName
     : market.kind === 'etf' || market.kind === 'fund' ? `${market.symbol} · ${market.englishName}`
@@ -88,54 +90,24 @@ function MarketCard({ market, active, onClick }: { market: Market; active: boole
         </>}
       </span>
       {market.key === 'USDCNY' && <span className="card-note">{market.symbol === 'CNY/USD' ? '1 人民币可兑换的美元' : '1 美元可兑换的人民币'}</span>}
-      {market.isStale && <span className="card-note warning">更新暂不可用 · 显示缓存数据</span>}
+      {market.kind !== 'fund' && market.key !== 'CFETS' && <span className="card-note">{market.marketTime ? market.dataGranularity === '1d' ? `日线收盘 ${formatHistoryDate(market.marketTime, market.exchangeTimezone)}` : `报价 ${formatChinaTime(market.marketTime, true)} · 北京时间` : market.dataGranularity === 'loading' ? '正在获取报价' : '报价暂不可用'}</span>}
+      {market.isStale && market.price != null && <span className="card-note warning">{market.dataGranularity === '1d' ? '分时报价暂不可用 · 显示日线' : '更新暂不可用 · 显示缓存数据'}</span>}
     </button>
   )
-}
+}, (previous, next) => previous.market === next.market && previous.active === next.active)
 
 export default function App() {
-  const [data, setData] = useState<MarketsResponse | null>(null)
+  const { data, loading, refreshing, error, refresh: load, refreshToken } = useMarketQuotes()
   const [selectedKey, setSelectedKey] = useState('NQ')
   const [period, setPeriod] = useState<Period>('MAX')
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState('')
   const [now, setNow] = useState(new Date())
   const [goldUnit, setGoldUnit] = useState<GoldUnit>('USD')
   const [currencyDirection, setCurrencyDirection] = useState<CurrencyDirection>('CNYUSD')
-  const requestIdRef = useRef(0)
 
   function selectMarket(key: Market['key']) {
     if (key === 'HXC' || key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
     setSelectedKey(key)
   }
-
-  const load = useCallback(async (silent = false) => {
-    const requestId = ++requestIdRef.current
-    if (silent) setRefreshing(true)
-    else setLoading(true)
-    try {
-      const response = await fetch(`/api/markets?period=${period}`, { cache: 'no-store' })
-      const body = await response.json()
-      if (!response.ok) throw new Error(body.error || '行情加载失败')
-      if (requestId !== requestIdRef.current) return
-      setData(body)
-      setError(body.errors?.length ? '部分行情暂时未更新' : '')
-    } catch (reason) {
-      if (requestId !== requestIdRef.current) return
-      setError(reason instanceof Error ? reason.message : '行情加载失败')
-    } finally {
-      if (requestId !== requestIdRef.current) return
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [period])
-
-  useEffect(() => {
-    load()
-    const refreshTimer = window.setInterval(() => load(true), 15_000)
-    return () => window.clearInterval(refreshTimer)
-  }, [load])
 
   useEffect(() => {
     const clockTimer = window.setInterval(() => setNow(new Date()), 1_000)
@@ -153,10 +125,19 @@ export default function App() {
     },
     [data, goldUnit, currencyDirection],
   )
-  const activeMarket = useMemo(
-    () => displayMarkets.find((market) => market.key === selectedKey) || displayMarkets[0],
+  const activeQuote = useMemo(
+    () => displayMarkets.find((market) => market.key === selectedKey)
+      || displayMarkets.find((market) => market.key === ({ NQ: 'NDX', NDX: 'NQ', ES: 'SPX', SPX: 'ES', YM: 'DJI', DJI: 'YM' } as Record<string, string>)[selectedKey])
+      || displayMarkets[0],
     [displayMarkets, selectedKey],
   )
+  const { history, loading: historyLoading, error: historyError } = useMarketHistory(activeQuote?.key, period, refreshToken)
+  const activeMarket = useMemo(() => {
+    const quote = data?.markets.find((market) => market.key === activeQuote?.key)
+    if (!quote) return undefined
+    return convertCurrencyMarket(convertGoldMarket(mergeQuoteAndHistory(quote, history), goldUnit, data?.fx?.rate), currencyDirection)
+  }, [data, activeQuote?.key, history, goldUnit, currencyDirection])
+  const companies = useMemo(() => displayMarkets.filter((market) => market.kind === 'stock'), [displayMarkets])
   const showTotalReturn = activeMarket?.key === 'NF_DIV_LV50' || activeMarket?.key === 'NF_DIV_LV50_A'
   const futuresSession = getSessionState(now)
   const cashSession = data?.usCashSession
@@ -181,9 +162,9 @@ export default function App() {
     : activeMarket?.kind === 'metal' && futuresSession.phase === 'open'
       ? { ...futuresSession, label: '现货黄金交易中', detail: '全球黄金参考行情' }
       : futuresSession
-  const latestTime = Math.max(...(data?.markets.map((market) => market.marketTime || 0) || [0]))
+  const latestTime = activeMarket?.marketTime || 0
   const ageSeconds = latestTime ? Math.max(0, Math.floor(now.getTime() / 1000 - latestTime)) : null
-  const stale = ageSeconds !== null && ageSeconds > 180
+  const stale = Boolean(activeMarket?.isStale) || (ageSeconds !== null && ageSeconds > 180)
 
   return (
     <main>
@@ -199,7 +180,7 @@ export default function App() {
             : activeMarket?.exchangeTimezone === 'Asia/Shanghai'
               ? `北京 ${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now)}`
             : `纽约 ${formatNewYorkTime(now)}`}</span></div>
-          <button className="icon-button" onClick={() => load(true)} disabled={refreshing} title="立即刷新" aria-label="立即刷新">
+          <button className="icon-button" onClick={load} disabled={refreshing} title="立即刷新" aria-label="立即刷新">
             <RefreshCw size={17} className={refreshing ? 'spin' : ''} />
           </button>
         </div>
@@ -210,7 +191,7 @@ export default function App() {
           <div><p className="eyebrow">{data?.usCashSession?.isOpen ? '美股正盘 · 现金指数 · 个股' : '美股休市/未开盘 · 股指期货 · 个股'}</p><h2>主要市场一览</h2></div>
           <div className={`feed-status ${error ? 'warn' : stale ? 'stale' : ''}`}>
             {error ? <AlertCircle size={15} /> : stale ? <WifiOff size={15} /> : <Wifi size={15} />}
-            <span>{error || (stale ? '当前为非活跃时段数据' : `${data?.delay || '延迟未知'} · 15秒刷新`)}</span>
+            <span>{error || (stale ? `最近报价 ${formatChinaTime(latestTime, true)} · 可能休市或延迟` : `${data?.delay || '延迟未知'} · 15秒刷新`)}</span>
           </div>
         </div>
 
@@ -290,19 +271,21 @@ export default function App() {
                 {activeMarket.sourceName && (activeMarket.sourceUrl ? <a href={activeMarket.sourceUrl} target="_blank" rel="noreferrer">来源：{activeMarket.sourceName}</a> : <span>来源：{activeMarket.sourceName}</span>)}
               </div>
             )}
-            <TrendChart market={activeMarket} period={period} />
+            {historyError && <p className="valuation-warning" role="status">{historyError}</p>}
+            {historyLoading && <p className="valuation-explainer" role="status">正在加载所选市场的历史走势…</p>}
+            <TrendChart market={activeMarket} period={period} loading={historyLoading} />
           </section>
           {showTotalReturn && <EtfTotalReturnPanel key={activeMarket.key} instrumentKey={activeMarket.key} fundCode={activeMarket.symbol.split('.')[0]} name={activeMarket.name} isOffExchange={activeMarket.kind === 'fund'} />}
           </div>
         )}
         {activeMarket && (activeMarket.kind === 'index' || activeMarket.kind === 'futures') && activeMarket.key !== 'CFETS' && <IndexConstituentsPanel key={activeMarket.key} indexKey={activeMarket.key} indexName={activeMarket.name} />}
         <HousingPanel />
-        <FundamentalsTable companies={displayMarkets.filter((market) => market.kind === 'stock')} />
+        <FundamentalsTable companies={companies} />
       </section>
 
       <footer>
         <span>行情源 {data?.feed || '公开行情'} · 延迟未知，仅供信息参考，不构成投资建议</span>
-        <span>{data?.fx?.rate ? `USD/CNY ${data.fx.rate.toFixed(4)} · ` : ''}更新时间 {formatChinaTime(latestTime)} CST</span>
+        <span>{data?.fx?.rate ? `USD/CNY ${data.fx.rate.toFixed(4)} · ` : ''}所选市场报价时间 {formatChinaTime(latestTime, true)} CST</span>
       </footer>
     </main>
   )

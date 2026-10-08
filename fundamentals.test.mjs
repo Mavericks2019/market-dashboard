@@ -249,10 +249,11 @@ test('P/B preserves negative equity and distinguishes unavailable values from va
   assert.equal(makeUsFundamentalRow(mcd, { SECUCODE: mcd.secucode, PB: 0, BVPS: 0 }, []).pb, 0)
 })
 
-test('five-minute caching deduplicates concurrent requests and preserves successful data on failure', async () => {
+test('manual refresh bypasses five-minute caching, deduplicates concurrent work and preserves data on failure', async () => {
   let time = 0
   let calls = 0
   let failing = false
+  let usPe = 10
   const fetchImpl = async (url) => {
     calls += 1
     if (failing) throw new Error('timeout')
@@ -269,7 +270,7 @@ test('five-minute caching deduplicates concurrent requests and preserves success
     if (report === 'RPT_VALUEANALYSIS_DET') data = [{ SECUCODE: secucode, PE_TTM: secucode === '000002.SZ' ? -3.05 : 311.81, PB_MRQ: 63.25, PS_TTM: 87.76, TRADE_DATE: '2026-09-30' }]
     else if (report.includes('HKCVALUE')) data = [{ SECUCODE: secucode, CORRE_SECUCODE: secucode, PE_TTM: 13, PB_MQR: 1.89, PS_TTM: 4, REPORT_DATE: '2026-10-05' }]
     else if (report.includes('HKF10')) data = [{ SECUCODE: secucode, IS_CNY_CODE: '0', TOTAL_MARKET_CAP: 150000, ISSUED_COMMON_SHARES: 1000, DIVIDEND_TTM: 6 }]
-    else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: 10, PB: 6.62, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
+    else if (report.includes('DATA_MAININDICATOR')) data = [{ SECUCODE: secucode, STD_REPORT_DATE: '2026-06-30', CURRENCY_ABBR: 'USD', PE_TTM: usPe, PB: 6.62, TOTAL_MARKET_CAP: 2300, DIVIDEND_RATE: null }]
     else data = incomeRows.map((row) => ({ ...row, SECUCODE: secucode, TOTAL_INCOME: row.OPERATE_INCOME }))
     return { ok: true, json: async () => ({ success: true, result: { data } }) }
   }
@@ -293,16 +294,31 @@ test('five-minute caching deduplicates concurrent requests and preserves success
   time = 299_999
   assert.strictEqual(await fetchFundamentals(), first)
   assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 2)
+  usPe = 20
+  const [forced, duplicateForce, ordinaryDuringForce] = await Promise.all([
+    fetchFundamentals({ force: true }), fetchFundamentals({ force: true }), fetchFundamentals(),
+  ])
+  assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 4)
+  assert.strictEqual(forced, duplicateForce)
+  assert.strictEqual(forced, ordinaryDuringForce)
+  assert.equal(forced.rows.find((row) => row.key === 'GOOGL').pe, 20)
+  assert.equal(forced.rows.find((row) => row.key === 'GOOGL').marketTime, null)
+  assert.equal(forced.asOf, Math.floor(time / 1000))
+  assert.strictEqual(await fetchFundamentals(), forced)
   time = 300_001
   failing = true
-  const stale = await fetchFundamentals()
-  assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 4)
+  const stale = await fetchFundamentals({ force: true })
+  assert.equal(calls, FUNDAMENTAL_INSTRUMENTS.length * 6)
   assert.equal(stale.asOf, Math.floor(time / 1000))
   assert.ok(stale.rows.every((row) => row.isStale))
   assert.equal(stale.rows.find((row) => row.key === 'GOOGL').ps, 10)
   assert.equal(stale.rows.find((row) => row.key === 'GOOGL').pb, 6.62)
+  assert.equal(stale.rows.find((row) => row.key === 'GOOGL').pe, 20)
+  assert.equal(stale.rows.find((row) => row.key === 'GOOGL').marketTime, forced.rows.find((row) => row.key === 'GOOGL').marketTime)
   assert.equal(stale.rows.find((row) => row.key === 'HSBC').pb, 1.89)
+  assert.equal(stale.rows.find((row) => row.key === 'HSBC').valuationDate, forced.rows.find((row) => row.key === 'HSBC').valuationDate)
   assert.equal(stale.rows.find((row) => row.key === 'UNITREE').pb, 63.25)
+  assert.equal(stale.rows.find((row) => row.key === 'UNITREE').reportDate, forced.rows.find((row) => row.key === 'UNITREE').reportDate)
   assert.match(stale.rows[0].note, /上次成功数据/)
   assert.equal(first.rows[0].isStale, false)
 })

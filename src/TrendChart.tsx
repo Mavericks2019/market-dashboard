@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import {
   AreaSeries,
   ColorType,
   CrosshairMode,
   createChart,
   type IChartApi,
+  type IRange,
+  type ISeriesApi,
+  type LogicalRange,
   type MouseEventParams,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { ChartPoint, Market, Period } from './types'
@@ -14,6 +18,7 @@ import { formatMarketNumber } from './currency'
 interface TrendChartProps {
   market: Market
   period: Period
+  loading?: boolean
 }
 
 interface TooltipState {
@@ -43,17 +48,29 @@ function formatTooltipNumber(value: number | null, market: Market) {
   return `${formatMarketNumber(value, market)}${market.unit ? ` ${market.unit}` : ''}`
 }
 
-export default function TrendChart({ market, period }: TrendChartProps) {
+function TrendChart({ market, period, loading = false }: TrendChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<'Area'> | null>(null)
+  const currentMarketRef = useRef(market)
+  const pointsByTimeRef = useRef(new Map<number, ChartPoint>())
+  const appliedPointsRef = useRef<ChartPoint[]>([])
+  const fittedRef = useRef(false)
+  const viewportRef = useRef<{ logical: LogicalRange | null; time: IRange<Time> | null } | null>(null)
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  currentMarketRef.current = market
+  const positive = (market.change ?? 0) >= 0
+  const intraday = isIntraday(market, period)
 
   useEffect(() => {
     const container = containerRef.current
-    if (!container || !market.points.length) return
+    if (!container) return
 
-    const positive = (market.change ?? 0) >= 0
-    const lineColor = positive ? '#f05d68' : '#2fc47c'
+    fittedRef.current = false
+    appliedPointsRef.current = []
+    pointsByTimeRef.current = new Map()
+    viewportRef.current = null
+    setTooltip(null)
     const chart = createChart(container, {
       width: container.clientWidth,
       height: container.clientHeight,
@@ -75,42 +92,27 @@ export default function TrendChart({ market, period }: TrendChartProps) {
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)', scaleMargins: { top: 0.12, bottom: 0.12 } },
       timeScale: {
         borderColor: 'rgba(255,255,255,0.08)',
-        timeVisible: isIntraday(market, period),
+        timeVisible: isIntraday(currentMarketRef.current, period),
         secondsVisible: false,
         rightOffset: 0,
         minBarSpacing: 0.01,
         lockVisibleTimeRangeOnResize: true,
+        shiftVisibleRangeOnNewBar: false,
       },
       localization: {
         locale: 'zh-CN',
-        priceFormatter: (price: number) => formatMarketNumber(price, market),
+        priceFormatter: (price: number) => formatMarketNumber(price, currentMarketRef.current),
       },
     })
     const series = chart.addSeries(AreaSeries, {
-      lineColor,
       lineWidth: 2,
-      topColor: positive ? 'rgba(240,93,104,0.25)' : 'rgba(47,196,124,0.28)',
-      bottomColor: positive ? 'rgba(240,93,104,0.01)' : 'rgba(47,196,124,0.01)',
-      crosshairMarkerBackgroundColor: lineColor,
       crosshairMarkerBorderColor: '#0f1218',
       priceLineVisible: true,
       lastValueVisible: true,
-      priceFormat: { type: 'price', precision: market.precision ?? 2, minMove: 10 ** -(market.precision ?? 2) },
-      pointMarkersVisible: market.points.length === 1,
     })
-    series.setData(market.points.map((point) => ({ time: point.time as UTCTimestamp, value: point.close })))
-    chart.timeScale().fitContent()
-    const firstPoint = market.points[0]
-    const lastPoint = market.points.at(-1)
-    if (firstPoint && lastPoint && firstPoint.time < lastPoint.time) {
-      chart.timeScale().setVisibleRange({
-        from: firstPoint.time as UTCTimestamp,
-        to: lastPoint.time as UTCTimestamp,
-      })
-    }
     chartRef.current = chart
+    seriesRef.current = series
 
-    const pointsByTime = new Map(market.points.map((point) => [point.time, point]))
     const handleCrosshairMove = (param: MouseEventParams) => {
       if (!param.point || param.point.x < 0 || param.point.y < 0 || param.point.x > container.clientWidth || param.point.y > container.clientHeight) {
         setTooltip(null)
@@ -122,7 +124,7 @@ export default function TrendChart({ market, period }: TrendChartProps) {
         setTooltip(null)
         return
       }
-      const point = pointsByTime.get(Number(timestamp))
+      const point = pointsByTimeRef.current.get(Number(timestamp))
       if (!point) {
         setTooltip(null)
         return
@@ -141,15 +143,84 @@ export default function TrendChart({ market, period }: TrendChartProps) {
       chart.unsubscribeCrosshairMove(handleCrosshairMove)
       chart.remove()
       chartRef.current = null
-      setTooltip(null)
+      seriesRef.current = null
     }
-  }, [market, period])
+  }, [market.key, period, market.unit])
+
+  useEffect(() => {
+    const precision = market.precision ?? 2
+    const lineColor = positive ? '#f05d68' : '#2fc47c'
+    seriesRef.current?.applyOptions({
+      lineColor,
+      topColor: positive ? 'rgba(240,93,104,0.25)' : 'rgba(47,196,124,0.28)',
+      bottomColor: positive ? 'rgba(240,93,104,0.01)' : 'rgba(47,196,124,0.01)',
+      crosshairMarkerBackgroundColor: lineColor,
+      priceFormat: { type: 'price', precision, minMove: 10 ** -precision },
+    })
+    chartRef.current?.applyOptions({ timeScale: { timeVisible: intraday } })
+  }, [market.key, period, market.unit, market.precision, positive, intraday])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    if (!chart || !series) return
+    const points = market.points
+    const previous = appliedPointsRef.current
+    const timeScale = chart.timeScale()
+
+    if (points !== previous) {
+      // Live polls usually change only the final bar or append new bars. Keep
+      // the existing series and avoid reloading decades of unchanged history.
+      const canUpdate = previous.length > 0 && points.length >= previous.length
+        && points[previous.length - 1].time === previous[previous.length - 1].time
+        && previous.slice(0, -1).every((point, index) => point.time === points[index].time && point.close === points[index].close)
+      if (fittedRef.current) {
+        const logical = timeScale.getVisibleLogicalRange()
+        const time = timeScale.getVisibleRange()
+        if (logical || time) viewportRef.current = { logical, time }
+      }
+      if (canUpdate) {
+        for (let index = previous.length - 1; index < points.length; index++) {
+          const point = points[index]
+          if (index >= previous.length || point.close !== previous[index].close) {
+            series.update({ time: point.time as UTCTimestamp, value: point.close })
+          }
+        }
+      } else {
+        series.setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.close })))
+      }
+      series.applyOptions({ pointMarkersVisible: points.length === 1 })
+      appliedPointsRef.current = points
+      pointsByTimeRef.current = new Map(points.map((point) => [point.time, point]))
+      setTooltip((current) => {
+        if (!current) return null
+        const point = pointsByTimeRef.current.get(current.point.time)
+        return point ? (point === current.point ? current : { ...current, point }) : null
+      })
+      const viewport = viewportRef.current
+      if (fittedRef.current && points.length && viewport) {
+        if (canUpdate && viewport.logical) timeScale.setVisibleLogicalRange(viewport.logical)
+        else if (viewport.time) timeScale.setVisibleRange(viewport.time)
+      }
+    }
+
+    // Wait for the initial history request to finish, then show its entire
+    // range once. Subsequent quote/history refreshes keep the user's viewport.
+    if (!loading && points.length && !fittedRef.current) {
+      timeScale.fitContent()
+      const first = points[0]
+      const last = points[points.length - 1]
+      if (first.time < last.time) timeScale.setVisibleRange({ from: first.time as UTCTimestamp, to: last.time as UTCTimestamp })
+      fittedRef.current = true
+    }
+  }, [market.key, period, market.unit, market.points, loading])
 
   return (
     <div className="chart-shell">
-      <div className="chart" ref={containerRef} aria-label={`${market.name}${period}趋势图`}>
-        {!market.points.length && <div className="chart-empty">当前范围暂无可用历史数据</div>}
-      </div>
+      <div className="chart" ref={containerRef} aria-label={`${market.name}${period}趋势图`} />
+      {!market.points.length && <div className="chart-empty" role="status" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        {loading ? '正在加载历史数据…' : '当前范围暂无可用历史数据'}
+      </div>}
       {tooltip && (
         <div
           className="chart-tooltip"
@@ -174,3 +245,5 @@ export default function TrendChart({ market, period }: TrendChartProps) {
     </div>
   )
 }
+
+export default memo(TrendChart)

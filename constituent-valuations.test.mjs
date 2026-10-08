@@ -106,3 +106,102 @@ test('overlapping requests share work and failure preserves last good values as 
   assert.equal(row.pe, 38.11)
   assert.equal(row.isStale, true)
 })
+
+test('quotes expire after one minute while verified US listing mappings use a separate long cache', async () => {
+  let clock = now()
+  let reports = 0
+  let quotes = 0
+  const service = createConstituentValuationService({ now: () => clock, fetchImpl: async (url) => {
+    if (url.includes('reportName=')) {
+      reports++
+      return { ok: true, json: async () => ({ success: true, result: { data: [{ SECURITY_CODE: 'AAPL', SECUCODE: 'AAPL.O' }] } }) }
+    }
+    quotes++
+    return { ok: true, json: async () => ({ rc: 0, data: { diff: [{ ...quote, f115: quotes }] } }) }
+  } })
+  await service([apple])
+  clock += 59_000
+  assert.equal((await service([apple])).rows[0].pe, 1)
+  clock += 1000
+  assert.equal((await service([apple])).rows[0].pe, 2)
+  assert.equal(quotes, 2)
+  assert.equal(reports, 1)
+  clock += 24 * 3600_000
+  await service([apple])
+  assert.equal(reports, 2)
+})
+
+test('manual refresh bypasses a fresh quote cache and shares in-flight work without replacing quote time', async () => {
+  let clock = now()
+  let quotes = 0
+  let reports = 0
+  let unblock
+  const wait = new Promise((resolve) => { unblock = resolve })
+  const service = createConstituentValuationService({ now: () => clock, fetchImpl: async (url) => {
+    if (url.includes('reportName=')) {
+      reports++
+      return { ok: true, json: async () => ({ success: true, result: { data: [{ SECURITY_CODE: 'AAPL', SECUCODE: 'AAPL.O' }] } }) }
+    }
+    const call = ++quotes
+    if (call === 2) await wait
+    return { ok: true, json: async () => ({ rc: 0, data: { diff: [{ ...quote, f115: call, f124: quote.f124 + call }] } }) }
+  } })
+  await service([apple])
+  clock += 1000
+  const forced = service([apple], { force: true })
+  const duplicate = service([apple], { force: true })
+  const normal = service([apple])
+  clock += 2000
+  unblock()
+  const results = await Promise.all([forced, duplicate, normal])
+  assert.equal(quotes, 2)
+  assert.equal(reports, 1)
+  for (const result of results) {
+    assert.equal(result.asOf, clock / 1000)
+    assert.equal(result.rows[0].pe, 2)
+    assert.equal(result.rows[0].marketTime, quote.f124 + 2)
+    assert.equal(result.rows[0].isStale, false)
+  }
+})
+
+test('older or undated refreshes preserve the last verified quote, market capitalization and timestamp', async () => {
+  let clock = now()
+  let nextQuote = quote
+  const service = createConstituentValuationService({ now: () => clock, fetchImpl: async (url) => ({ ok: true, json: async () => url.includes('reportName=')
+    ? { success: true, result: { data: [{ SECURITY_CODE: 'AAPL', SECUCODE: 'AAPL.O' }] } }
+    : { rc: 0, data: { diff: [nextQuote] } } }) })
+  await service([apple])
+  for (const timestamp of [quote.f124 - 60, '-', now() / 1000 + 3600]) {
+    clock += 1000
+    nextQuote = { ...quote, f115: 999, f20: 1, f124: timestamp }
+    const result = await service([apple], { force: true })
+    assert.equal(result.rows[0].pe, quote.f115)
+    assert.equal(result.rows[0].marketCap, quote.f20)
+    assert.equal(result.rows[0].marketTime, quote.f124)
+    assert.equal(result.rows[0].isStale, true)
+    assert.equal(result.asOf, clock / 1000)
+  }
+  nextQuote = { ...quote, f115: 40, f20: quote.f20 + 100, f124: quote.f124 + 60 }
+  const recovered = (await service([apple], { force: true })).rows[0]
+  assert.equal(recovered.pe, 40)
+  assert.equal(recovered.marketCap, quote.f20 + 100)
+  assert.equal(recovered.marketTime, quote.f124 + 60)
+  assert.equal(recovered.isStale, false)
+  assert.doesNotMatch(recovered.note, /保留/)
+})
+
+test('a partial refresh cannot erase a known market cap or relabel it with a newer quote timestamp', async () => {
+  let nextQuote = quote
+  const service = createConstituentValuationService({ now, fetchImpl: async (url) => ({ ok: true, json: async () => url.includes('reportName=')
+    ? { success: true, result: { data: [{ SECURITY_CODE: 'AAPL', SECUCODE: 'AAPL.O' }] } }
+    : { rc: 0, data: { diff: [nextQuote] } } }) })
+  await service([apple])
+  nextQuote = { ...quote, f20: '-', f115: 40, f124: quote.f124 + 60 }
+  const row = (await service([apple], { force: true })).rows[0]
+  assert.equal(row.marketCap, quote.f20)
+  assert.equal(row.marketCapSortValue, quote.f20)
+  assert.equal(row.marketTime, quote.f124)
+  assert.equal(row.pe, quote.f115)
+  assert.equal(row.isStale, true)
+  assert.match(row.note, /总市值缺失/)
+})

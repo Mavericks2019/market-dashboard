@@ -327,7 +327,14 @@ export function createFundamentalsService({ fetchImpl = fetch, now = Date.now, t
         ])
         row = makeUsFundamentalRow(instrument, main[0], financials)
       }
-      lastGood.set(instrument.key, row)
+      const old = lastGood.get(instrument.key)
+      const available = [row.pe, row.pb, row.ps, row.dividendYield].some((value) => value !== null)
+      if (old && (!available
+        || (old.valuationDate && row.valuationDate && row.valuationDate < old.valuationDate)
+        || (old.reportDate && row.reportDate && row.reportDate < old.reportDate))) {
+        return { ...old, isStale: true, note: `${old.note}；本次来源数据缺失或日期倒退，保留上次成功数据及其原始日期` }
+      }
+      if (available) lastGood.set(instrument.key, row)
       return row
     } catch {
       const old = lastGood.get(instrument.key)
@@ -337,9 +344,9 @@ export function createFundamentalsService({ fetchImpl = fetch, now = Date.now, t
     }
   }
 
-  return async function fetchFundamentals() {
-    if (cached && refreshedAt !== null && now() - refreshedAt < ttl) return cached
+  return async function fetchFundamentals({ force = false } = {}) {
     if (inFlight) return inFlight
+    if (!force && cached && refreshedAt !== null && now() - refreshedAt < ttl) return cached
     inFlight = (async () => {
       const rows = await Promise.all(FUNDAMENTAL_INSTRUMENTS.map(loadRow))
       refreshedAt = now()

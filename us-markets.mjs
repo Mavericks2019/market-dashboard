@@ -147,6 +147,7 @@ export const US_INSTRUMENTS = {
 }
 
 const quoteCache = { time: 0, data: new Map() }
+let quotePending = null
 const trendCache = new Map()
 
 function finite(value) {
@@ -252,8 +253,14 @@ function parseSnapshot(key, values) {
 }
 
 /** Fetch regular and extended quotes for the configured stocks and cash indices. */
-export async function fetchUsQuotes() {
-  if (Date.now() - quoteCache.time < CACHE_TTL && quoteCache.data.size) return quoteCache.data
+export async function fetchUsQuotes({ force = false } = {}) {
+  if (quotePending) return quotePending
+  if (!force && Date.now() - quoteCache.time < CACHE_TTL && quoteCache.data.size) return quoteCache.data
+  quotePending = loadUsQuotes().finally(() => { quotePending = null })
+  return quotePending
+}
+
+async function loadUsQuotes() {
   const symbols = Object.values(US_INSTRUMENTS).map((instrument) => `gb_${instrument.snapshotSymbol}`).join(',')
   const text = await getText(`https://hq.sinajs.cn/list=${symbols}`)
   const quotes = new Map()

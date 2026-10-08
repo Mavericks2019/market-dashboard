@@ -45,6 +45,16 @@ test('quotes retain source time and do not accept missing times or empty prices'
   assert.equal(parseHkStockQuotes(quoteText.replaceAll(',09:40:30', ',')).size, 0)
 })
 
+test('forced HK quotes bypass cache while overlapping requests share one refresh', async () => {
+  let requests = 0
+  const adapter = createHkStocksAdapter({ fetchImpl: async (url) => { requests++; return responses(url) } })
+  await adapter.fetchQuotes()
+  await adapter.fetchQuotes()
+  assert.equal(requests, 1)
+  await Promise.all([adapter.fetchQuotes({ force: true }), adapter.fetchQuotes({ force: true })])
+  assert.equal(requests, 2)
+})
+
 test('MAX keeps old history when refreshing a short window; periods share true start and fresh quote', async () => {
   const adapter = createHkStocksAdapter({ fetchImpl: async (url) => responses(url), loadHistory: async () => ({ rows: dayRows }) })
   const [max, day, week] = await Promise.all(['MAX', '1D', '5D'].map((period) => adapter.fetchTrend('HSBC', period)))

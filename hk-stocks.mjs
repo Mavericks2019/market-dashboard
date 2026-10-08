@@ -122,9 +122,9 @@ export function createHkStocksAdapter({ fetchImpl = fetch, now = Date.now, loadH
     if (!response.ok) throw new Error(`港股行情服务返回 ${response.status}`)
     return new TextDecoder(encoding).decode(await response.arrayBuffer())
   }
-  async function cachedRequest(key, ttl, request, fallback) {
+  async function cachedRequest(key, ttl, request, fallback, force = false) {
     const existing = cache.get(key)
-    if (existing && now() - existing.fetchedAt < ttl) return existing
+    if (!force && existing && now() - existing.fetchedAt < ttl) return existing
     if (pending.has(key)) return pending.get(key)
     const task = (async () => {
       try {
@@ -143,14 +143,14 @@ export function createHkStocksAdapter({ fetchImpl = fetch, now = Date.now, loadH
     pending.set(key, task)
     return task
   }
-  async function fetchQuotes() {
+  async function fetchQuotes({ force = false } = {}) {
     const value = await cachedRequest('quotes', QUOTE_TTL, async () => {
       const symbols = Object.values(HK_STOCKS_INSTRUMENTS).map((instrument) => `rt_hk${instrument.sourceSymbol}`).join(',')
       const text = await getText(`https://hq.sinajs.cn/list=${symbols}`, 'gb18030')
       const quotes = parseHkStockQuotes(text)
       if (quotes.size !== Object.keys(HK_STOCKS_INSTRUMENTS).length) throw new Error('港股快照数据不完整')
       return quotes
-    })
+    }, undefined, force)
     return new Map([...value.data].map(([key, quote]) => [key, { ...quote, isStale: value.isStale }]))
   }
   async function history(symbol) {

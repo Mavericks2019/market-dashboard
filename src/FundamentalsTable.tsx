@@ -1,7 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { formatChinaTime } from './marketTime'
 import type { FundamentalRow, FundamentalsResponse, Market } from './types'
+
+type SortMetric = 'pe' | 'pb' | 'ps' | 'dividendYield'
+type FundamentalSort = { metric: SortMetric; direction: 'ascending' | 'descending' }
+const SORT_COLUMNS: { metric: SortMetric; name: string; englishName: string }[] = [
+  { metric: 'pe', name: '市盈率', englishName: 'P/E' },
+  { metric: 'pb', name: '市净率', englishName: 'P/B' },
+  { metric: 'ps', name: '市销率', englishName: 'P/S' },
+  { metric: 'dividendYield', name: '股息率', englishName: 'Dividend yield' },
+]
+
+export function sortFundamentals(rows: readonly FundamentalRow[], sort: FundamentalSort | null) {
+  if (!sort) return rows
+  return rows.map((row, index) => {
+    const raw = row[sort.metric]
+    const value = raw == null || !Number.isFinite(raw)
+      || ((sort.metric === 'pe' || sort.metric === 'pb') && raw <= 0) ? null : raw
+    return { row, index, value }
+  }).sort((a, b) => {
+    // Unknown values and ratios displayed as N/A stay last in both directions.
+    // Preserve watchlist order for ties, including multiple missing values.
+    if (a.value === null) return b.value === null ? a.index - b.index : 1
+    if (b.value === null) return -1
+    return (a.value - b.value) * (sort.direction === 'ascending' ? 1 : -1) || a.index - b.index
+  }).map(({ row }) => row)
+}
 
 function metric(value: number | null | undefined, unit: string, positiveOnly = false) {
   if (value == null || !Number.isFinite(value)) return '暂无'
@@ -9,20 +34,21 @@ function metric(value: number | null | undefined, unit: string, positiveOnly = f
   return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${unit}`
 }
 
-export default function FundamentalsTable({ companies }: { companies: Market[] }) {
+function FundamentalsTable({ companies }: { companies: Market[] }) {
   const [data, setData] = useState<FundamentalsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [sort, setSort] = useState<FundamentalSort | null>(null)
   const activeRequest = useRef<AbortController | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     activeRequest.current?.abort()
     const controller = new AbortController()
     activeRequest.current = controller
     setLoading(true)
     const timeout = window.setTimeout(() => controller.abort(), 30_000)
     try {
-      const response = await fetch('/api/fundamentals', { signal: controller.signal, cache: 'no-store' })
+      const response = await fetch(`/api/fundamentals${force ? '?refresh=1' : ''}`, { signal: controller.signal, cache: 'no-store' })
       const body = await response.json()
       if (!response.ok || !Array.isArray(body.rows)) throw new Error(body.error || '估值数据暂不可用')
       if (controller !== activeRequest.current) return
@@ -47,11 +73,12 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
     }
   }, [load])
 
-  const rows: FundamentalRow[] = data?.rows ?? companies.map((company) => ({
+  const sourceRows = useMemo<FundamentalRow[]>(() => data?.rows ?? companies.map((company) => ({
     key: company.key, symbol: company.symbol, name: company.name, englishName: company.englishName,
     watchStance: company.watchStance,
     pe: null, pb: null, ps: null, dividendYield: null, marketTime: null,
-  }))
+  })), [data, companies])
+  const rows = useMemo(() => sortFundamentals(sourceRows, sort), [sourceRows, sort])
 
   return (
     <section className="fundamentals-panel" aria-labelledby="fundamentals-title" aria-busy={loading}>
@@ -59,7 +86,7 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
         <div><p className="eyebrow">COMPANY VALUATION</p><h2 id="fundamentals-title">关注企业估值</h2></div>
         <div className="valuation-refresh">
           <span>{loading ? '正在更新…' : `每5分钟检查${data ? ` · ${formatChinaTime(data.asOf)}` : ''}`}</span>
-          <button className="icon-button" onClick={load} disabled={loading} aria-label="刷新企业估值" title="刷新企业估值"><RefreshCw size={16} className={loading ? 'spin' : ''} /></button>
+          <button className="icon-button" onClick={() => load(true)} disabled={loading} aria-label="刷新企业估值" title="刷新企业估值"><RefreshCw size={16} className={loading ? 'spin' : ''} /></button>
         </div>
       </div>
       {error && <p className="valuation-warning" role="status">{error}{data ? '，保留上次结果。' : '。'}</p>}
@@ -67,10 +94,18 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
         <table className="valuation-table">
           <thead><tr>
             <th scope="col">企业 / 股票代码</th>
-            <th scope="col">市盈率 <span>P/E</span></th>
-            <th scope="col">市净率 <span>P/B</span></th>
-            <th scope="col">市销率 <span>P/S</span></th>
-            <th scope="col">股息率 <span>Dividend yield</span></th>
+            {SORT_COLUMNS.map((column) => {
+              const direction = sort?.metric === column.metric ? sort.direction : 'none'
+              const nextDirection = direction === 'descending' ? 'ascending' : 'descending'
+              const label = `${column.name}，点击按${nextDirection === 'ascending' ? '升序' : '降序'}排序`
+              return <th key={column.metric} scope="col" aria-sort={direction}>
+                <button type="button" className="valuation-sort-button" title={label} aria-label={label}
+                  onClick={() => setSort({ metric: column.metric, direction: nextDirection })}>
+                  {column.name} <span className="valuation-sort-arrow" aria-hidden="true">{direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : '↕'}</span>
+                  <span>{column.englishName}</span>
+                </button>
+              </th>
+            })}
             <th scope="col">估值日期 / 财报期 / 来源</th>
           </tr></thead>
           <tbody>
@@ -94,3 +129,5 @@ export default function FundamentalsTable({ companies }: { companies: Market[] }
     </section>
   )
 }
+
+export default memo(FundamentalsTable)
