@@ -8,9 +8,12 @@ import { CFETS_INSTRUMENT, fetchCfetsTrend } from './cfets-market.mjs'
 import { CNY_INSTRUMENT, fetchCnyTrend } from './cny-market.mjs'
 import { HK_STOCKS_INSTRUMENTS, fetchHkStockTrend } from './hk-stocks.mjs'
 import { HSTECH_INSTRUMENT, fetchHstechTrend } from './hstech-market.mjs'
+import { HXC_INSTRUMENT, fetchHxcTrend } from './hxc-market.mjs'
 import { MAINLAND_INSTRUMENTS, MAINLAND_ETF_INSTRUMENTS, MAINLAND_STOCKS_INSTRUMENTS, fetchMainlandStockTrend } from './mainland-stocks.mjs'
 import { DIVIDEND_INDEX_INSTRUMENTS, fetchDividendIndexTrend } from './dividend-indices.mjs'
 import { fetchFundamentals } from './fundamentals.mjs'
+import { fetchIndexConstituents, getConstituent } from './index-constituents.mjs'
+import { fetchConstituentValuations } from './constituent-valuations.mjs'
 import { fetchHousingData } from './housing-market.mjs'
 import { FUND_LINK_INSTRUMENTS, fetchEtfTotalReturn, fetchFundNavTrend } from './etf-total-return.mjs'
 
@@ -26,6 +29,7 @@ const instruments = {
   NQ: { symbol: 'NQ=F', name: '纳斯达克100期货', englishName: 'Nasdaq-100 Futures', contract: 'E-mini Nasdaq-100', kind: 'futures', unit: '点' },
   NDX: US_INSTRUMENTS.NDX,
   IXIC: { symbol: '^IXIC', name: '纳斯达克综合指数', englishName: 'NASDAQ Composite', contract: 'NASDAQ Composite', kind: 'index', unit: '点' },
+  HXC: HXC_INSTRUMENT,
   ES: { symbol: 'ES=F', name: '标普500期货', englishName: 'S&P 500 Futures', contract: 'E-mini S&P 500', kind: 'futures', unit: '点' },
   SPX: US_INSTRUMENTS.SPX,
   YM: { symbol: 'YM=F', name: '道琼斯期货', englishName: 'Dow Jones Futures', contract: 'E-mini Dow', kind: 'futures', unit: '点' },
@@ -580,6 +584,32 @@ app.get('/api/fundamentals', async (_request, response) => {
   }
 })
 
+app.get('/api/index-constituents', async (request, response) => {
+  const key = typeof request.query.key === 'string' ? request.query.key : ''
+  if (!Object.hasOwn(instruments, key) || !['index', 'futures'].includes(instruments[key].kind) || key === 'CFETS') {
+    return response.status(400).json({ error: '请选择股票指数' })
+  }
+  try {
+    response.json(await fetchIndexConstituents(key))
+  } catch {
+    response.status(502).json({ error: '成分股名单暂时不可用，请稍后刷新' })
+  }
+})
+
+app.get('/api/constituent-valuations', async (request, response) => {
+  const symbols = typeof request.query.symbols === 'string' ? request.query.symbols.split(',') : []
+  if (!symbols.length || symbols.length > 20 || new Set(symbols).size !== symbols.length) {
+    return response.status(400).json({ error: '每批请提交1至20项不重复的成分股' })
+  }
+  const companies = symbols.map(getConstituent)
+  if (companies.some((company) => !company)) return response.status(400).json({ error: '请先获取指数的成分股名单' })
+  try {
+    response.json(await fetchConstituentValuations(companies))
+  } catch {
+    response.status(502).json({ error: '成分股估值暂时不可用，请稍后刷新' })
+  }
+})
+
 app.get('/api/housing', async (_request, response) => {
   response.set('Cache-Control', 'no-store')
   try {
@@ -612,6 +642,7 @@ app.get('/api/markets', async (request, response) => {
     ...keys.map((key) => {
       if (key === 'CFETS') return fetchCfetsTrend(period)
       if (key === 'USDCNY') return fetchCnyTrend(period)
+      if (key === 'HXC') return fetchHxcTrend(period)
       if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key)) return fetchFundNavTrend(key, period)
       if (Object.hasOwn(HK_STOCKS_INSTRUMENTS, key)) return fetchHkStockTrend(key, period)
       if (key === 'HSTECH') return fetchHstechTrend(period)
@@ -637,7 +668,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key) || Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
+      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key) || Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['HXC', 'CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

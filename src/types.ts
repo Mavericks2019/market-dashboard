@@ -10,7 +10,7 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'NF_DIV_LV50_A' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'HXC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'NF_DIV_LV50_A' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string
@@ -78,6 +78,10 @@ export interface FundamentalRow {
   pb: number | null
   ps: number | null
   dividendYield: number | null
+  marketCap?: number | null
+  marketCapCurrency?: string | null
+  marketCapSortValue?: number | null
+  marketCapNote?: string
   marketTime: number | null
   reportDate?: string | null
   valuationDate?: string | null
@@ -95,6 +99,31 @@ export interface FundamentalRow {
 export interface FundamentalsResponse {
   asOf: number
   rows: FundamentalRow[]
+}
+
+export interface IndexConstituent {
+  key: string
+  symbol: string
+  name: string
+  englishName: string
+  market: 'US' | 'HK' | 'CN' | 'GB' | 'DE' | 'JP' | 'KR'
+  exchange?: string
+}
+
+export interface IndexConstituentsResponse {
+  key: string
+  indexName: string
+  indexSymbol: string
+  asOf: number
+  holdingsDate?: string | null
+  total: number | null
+  sourceName: string
+  sourceUrl: string
+  isStale: boolean
+  note: string
+  status?: 'unavailable'
+  reason?: string
+  rows: IndexConstituent[]
 }
 
 export interface HousingIndexValues {

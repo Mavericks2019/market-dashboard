@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertCircle, BarChart3, Clock3, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import TrendChart from './TrendChart'
 import FundamentalsTable from './FundamentalsTable'
+import IndexConstituentsPanel from './IndexConstituentsPanel'
 import HousingPanel from './HousingPanel'
 import EtfTotalReturnPanel from './EtfTotalReturnPanel'
 import { formatChinaTime, formatNewYorkTime, getCashSessionState, getSessionState } from './marketTime'
@@ -105,7 +106,7 @@ export default function App() {
   const requestIdRef = useRef(0)
 
   function selectMarket(key: Market['key']) {
-    if (key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
+    if (key === 'HXC' || key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
     setSelectedKey(key)
   }
 
@@ -294,6 +295,7 @@ export default function App() {
           {showTotalReturn && <EtfTotalReturnPanel key={activeMarket.key} instrumentKey={activeMarket.key} fundCode={activeMarket.symbol.split('.')[0]} name={activeMarket.name} isOffExchange={activeMarket.kind === 'fund'} />}
           </div>
         )}
+        {activeMarket && (activeMarket.kind === 'index' || activeMarket.kind === 'futures') && activeMarket.key !== 'CFETS' && <IndexConstituentsPanel key={activeMarket.key} indexKey={activeMarket.key} indexName={activeMarket.name} />}
         <HousingPanel />
         <FundamentalsTable companies={displayMarkets.filter((market) => market.kind === 'stock')} />
       </section>
