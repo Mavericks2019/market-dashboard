@@ -16,6 +16,17 @@ export const MAINLAND_STOCKS_INSTRUMENTS = {
   },
 }
 
+export const MAINLAND_ETF_INSTRUMENTS = {
+  NF_DIV_LV50: {
+    key: 'NF_DIV_LV50', symbol: '515450.SH', sourceSymbol: 'sh515450', name: '南方红利低波50ETF',
+    englishName: 'Southern Dividend Low Volatility 50 ETF', sourceNames: ['红利低波50ETF南方'],
+    kind: 'etf', unit: 'CNY/份', currency: 'CNY', exchange: '上交所', exchangeTimezone: 'Asia/Shanghai',
+    precision: 3, contract: '南方标普中国A股大盘红利低波50交易型开放式指数证券投资基金', listingDate: '2020-02-26',
+  },
+}
+
+export const MAINLAND_INSTRUMENTS = { ...MAINLAND_STOCKS_INSTRUMENTS, ...MAINLAND_ETF_INSTRUMENTS }
+
 function numeric(value, positive = false) {
   if (value === null || value === undefined || String(value).trim() === '') return null
   const number = Number(value)
@@ -40,7 +51,7 @@ function sortedUnique(points) {
 
 function validName(value, instrument) {
   const normalize = (name) => name.normalize('NFKC').replace(/\s+/g, '').replace(/-W$/, '')
-  return typeof value === 'string' && normalize(value) === normalize(instrument.name)
+  return typeof value === 'string' && [instrument.name, ...(instrument.sourceNames ?? [])].some((name) => normalize(value) === normalize(name))
 }
 
 function instrumentPayload(payload, instrument) {
@@ -179,7 +190,7 @@ export function createMainlandStocksAdapter({ fetchImpl = fetch, now = Date.now 
     })
   }
   async function fetchTrend(key, period = 'MAX') {
-    const instrument = MAINLAND_STOCKS_INSTRUMENTS[key]
+    const instrument = MAINLAND_INSTRUMENTS[key]
     if (!instrument || !PERIODS.has(period)) throw new Error('未知 A 股代码或周期')
     const intraday = period === '1D' || period === '5D'
     const [dailyResult, quoteResult, minuteResult] = await Promise.allSettled([
@@ -194,7 +205,10 @@ export function createMainlandStocksAdapter({ fetchImpl = fetch, now = Date.now 
     const price = snapshot?.data.price ?? latestDay.close
     const change = previousClose === null ? null : price - previousClose
     const isStale = daily.isStale || !snapshot || snapshot.isStale || Boolean(intraday && (!minutes || minutes.isStale))
-    const notes = [`${instrument.contract}；历史自 ${instrument.listingDate} 上市首日起。日线为不复权价格，分红、拆股会影响跨期比较。`, '休市期间保留最近交易日行情，报价时间以来源为准。']
+    const priceBasis = instrument.kind === 'etf'
+      ? '跟踪标普中国A股大盘红利低波50指数；展示基金份额的场内成交价格，与基金净值及标的指数点位有区别。历史为不复权价格，不计入现金分红再投资的总回报。'
+      : '日线为不复权价格，分红、拆股会影响跨期比较。'
+    const notes = [`${instrument.contract}；历史自 ${instrument.listingDate} 上市首日起。${priceBasis}`, '休市期间保留最近交易日行情，报价时间以来源为准。']
     if (intraday && !minutes) notes.push('分时源暂不可用，显示最近交易日的真实日线。')
     if (isStale) notes.push('部分上游刷新失败，保留最近可用数据及原始时间。')
     return {

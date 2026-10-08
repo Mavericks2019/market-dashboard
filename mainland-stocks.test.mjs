@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAINLAND_STOCKS_INSTRUMENTS, createMainlandStocksAdapter, parseMainlandDailyRows, parseMainlandMinuteSessions, parseMainlandStockQuote } from './mainland-stocks.mjs'
+import { MAINLAND_STOCKS_INSTRUMENTS, MAINLAND_ETF_INSTRUMENTS, createMainlandStocksAdapter, parseMainlandDailyRows, parseMainlandMinuteSessions, parseMainlandStockQuote } from './mainland-stocks.mjs'
 
 const daily = [['2026-08-19', '1100', '845', '1100', '800', '1000'], ['2026-09-29', '460', '451.02', '461.5', '450.7', '100'], ['2026-09-30', '451.99', '450.4', '459.9', '446.5', '200']]
 const quoteFields = ['宇树科技', '451.99', '451.02', '450.4', '459.9', '446.5', '450.29', '450.4', '200', ...Array(21).fill('0'), '2026-09-30', '15:34:59']
@@ -129,4 +129,62 @@ test('mismatched Tencent issuer fails instead of charting another company', asyn
     return Response.json({ code: 0, data: { sh688836: { day: daily, qt: { sh688836: ['1', '另一家公司', '688836'] } } } })
   } })
   await assert.rejects(adapter.fetchTrend('UNITREE'), /身份/)
+})
+
+const etfQuoteFields = ['红利低波50ETF南方', '1.404', '1.410', '1.424', '1.425', '1.404', '1.423', '1.424', '114519698', ...Array(21).fill('0'), '2026-10-08', '11:30:00']
+const etfQuoteText = `var hq_str_sh515450="${etfQuoteFields.join(',')}";`
+const etfQuoteBytes = Buffer.concat([
+  Buffer.from('var hq_str_sh515450="'), Buffer.from('baecc0fbb5cdb2a83530455446c4cfb7bd', 'hex'),
+  Buffer.from(`,${etfQuoteFields.slice(1).join(',')}";`),
+])
+
+test('ETF snapshots accept the verified feed alias without confusing another fund, and preserve mill prices', () => {
+  const instrument = MAINLAND_ETF_INSTRUMENTS.NF_DIV_LV50
+  const snapshot = parseMainlandStockQuote(etfQuoteText, instrument)
+  assert.equal(snapshot.price, 1.424)
+  assert.equal(snapshot.previousClose, 1.410)
+  assert.equal(new Date(snapshot.marketTime * 1000).toISOString(), '2026-10-08T03:30:00.000Z')
+  assert.equal(parseMainlandStockQuote(etfQuoteText.replace('红利低波50ETF南方', instrument.name), instrument).price, 1.424)
+  assert.throws(() => parseMainlandStockQuote(etfQuoteText.replace('红利低波50ETF南方', '红利低波100ETF南方'), instrument), /身份/)
+  assert.throws(() => parseMainlandStockQuote(etfQuoteText.replace('sh515450', 'sh515180'), instrument), /身份/)
+})
+
+test('ETF MAX pages to exchange listing; intraday retains fund identity, three decimals and actual price basis', async () => {
+  const requests = []
+  const instrument = MAINLAND_ETF_INSTRUMENTS.NF_DIV_LV50
+  const makeAdapter = (name = '红利低波50ETF南方', code = '515450') => createMainlandStocksAdapter({ fetchImpl: async (url) => {
+    requests.push(url)
+    if (url.includes('sinajs')) return new Response(etfQuoteBytes)
+    const qt = { sh515450: ['1', name, code] }
+    const data = url.includes('fqkline') ? {
+      qt, day: url.includes('2022-08-16')
+        ? [['2020-02-26', '1.037', '1.037', '1.052', '1.027', '568657']]
+        : [['2022-08-17', '1.169', '1.174', '1.174', '1.163', '254907'], ['2026-10-08', '1.404', '1.424', '1.425', '1.404', '1145197']],
+    } : { qt, data: [
+      { date: '20261008', data: ['0930 1.404 7054', '1130 1.424 1145197'] },
+      { date: '20260930', data: ['0930 1.395 1342', '1500 1.410 1417602'] },
+    ] }
+    return Response.json({ code: 0, data: { sh515450: data } })
+  } })
+  const adapter = makeAdapter()
+  const [max, day, week] = await Promise.all(['MAX', '1D', '5D'].map((period) => adapter.fetchTrend(instrument.key, period)))
+  assert.equal(requests.length, 4)
+  assert.equal(max.points.length, 3)
+  assert.equal(day.points.length, 2)
+  assert.equal(week.points.length, 4)
+  assert.equal(max.kind, 'etf')
+  assert.equal(max.precision, 3)
+  assert.equal(max.unit, 'CNY/份')
+  assert.equal(max.watchStance, undefined)
+  assert.equal(max.isStale, false)
+  assert.equal(max.price, 1.424)
+  assert.equal(max.points[0].close, 1.037)
+  assert.equal(new Date(max.historyStart * 1000).toISOString().slice(0, 10), '2020-02-26')
+  assert.equal(day.historyStart, max.historyStart)
+  assert.equal(day.dataGranularity, '1m')
+  assert.match(max.dataNote, /场内成交价格/)
+  assert.match(max.dataNote, /基金净值及标的指数/)
+  assert.match(max.dataNote, /不计入现金分红再投资/)
+  await assert.rejects(makeAdapter('红利低波100ETF南方').fetchTrend(instrument.key), /身份/)
+  await assert.rejects(makeAdapter('红利低波50ETF南方', '515180').fetchTrend(instrument.key), /身份/)
 })

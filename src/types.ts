@@ -10,12 +10,12 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string
   contract: string
-  kind: 'futures' | 'index' | 'stock' | 'metal' | 'forex'
+  kind: 'futures' | 'index' | 'stock' | 'etf' | 'metal' | 'forex'
   unit: string
   currency: string
   exchange: string

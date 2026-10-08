@@ -19,6 +19,7 @@ const periods: Array<{ value: Period; label: string }> = [
 
 const marketGroups = [
   { key: 'indices', title: '指数', caption: '全球股市指数与股指期货', includes: (market: Market) => (market.kind === 'index' || market.kind === 'futures') && market.key !== 'CFETS' },
+  { key: 'etfs', title: '基金ETF', caption: '关注的场内交易基金', includes: (market: Market) => market.kind === 'etf' },
   { key: 'stocks', title: '个股', caption: '关注的上市企业', includes: (market: Market) => market.kind === 'stock' },
   { key: 'currencies', title: '货币', caption: '人民币汇率、汇率指数与黄金', includes: (market: Market) => market.kind === 'forex' || market.kind === 'metal' || market.key === 'CFETS' },
 ]
@@ -56,13 +57,16 @@ function convertGoldMarket(market: Market, unit: GoldUnit, fxRate: number | null
 
 function MarketCard({ market, active, onClick }: { market: Market; active: boolean; onClick: () => void }) {
   const positive = (market.change ?? 0) >= 0
+  const cardLabel = market.kind === 'forex' ? market.englishName
+    : market.kind === 'etf' ? `${market.symbol} · ${market.englishName}`
+    : `${market.englishName} · ${market.kind === 'stock' || ['Asia/Hong_Kong', 'Asia/Shanghai'].includes(market.exchangeTimezone) ? market.symbol : market.key}`
   return (
     <button className={`market-card ${active ? 'active' : ''}${market.watchStance === 'bearish' ? ' bearish' : ''}`} onClick={onClick} aria-pressed={active}>
       <span className="card-accent" />
       <span className="market-card-top">
         <span>
           <strong>{market.name}</strong>
-          <small title={`${market.englishName} · ${market.symbol}`}>{market.englishName}{market.kind !== 'forex' ? ` · ${market.kind === 'stock' || ['Asia/Hong_Kong', 'Asia/Shanghai'].includes(market.exchangeTimezone) ? market.symbol : market.key}` : ''}</small>
+          <small title={`${market.englishName} · ${market.symbol}`}>{cardLabel}</small>
           {market.watchStance === 'bearish' && <span className="watch-stance-tag">看空关注</span>}
         </span>
         <span className={`direction ${positive ? 'up' : 'down'}`}>{market.change === null ? '暂无' : market.change === 0 ? '持平' : positive ? '上涨' : '下跌'}</span>
@@ -158,8 +162,8 @@ export default function App() {
     ? { phase: 'weekend', label: '人民币汇率指数', detail: activeMarket.frequency || '官方定期发布' }
     : activeMarket?.exchangeTimezone === 'Asia/Hong_Kong'
       ? { phase: 'weekend', label: '港股行情', detail: '香港市场 · 以行情源报价时间为准' }
-    : (activeMarket?.kind === 'stock' || activeMarket?.kind === 'index') && activeMarket.exchangeTimezone === 'Asia/Shanghai'
-      ? { phase: 'weekend', label: activeMarket.kind === 'index' ? 'A股指数' : 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
+    : (activeMarket?.kind === 'stock' || activeMarket?.kind === 'index' || activeMarket?.kind === 'etf') && activeMarket.exchangeTimezone === 'Asia/Shanghai'
+      ? { phase: 'weekend', label: activeMarket.kind === 'index' ? 'A股指数' : activeMarket.kind === 'etf' ? 'ETF行情' : 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
     : activeMarket?.kind === 'forex'
       ? { phase: 'weekend', label: '在岸人民币外汇', detail: '以行情源报价时间为准' }
     : activeMarket?.kind === 'index' || activeMarket?.kind === 'stock'
@@ -208,7 +212,7 @@ export default function App() {
               const markets = displayMarkets.filter(group.includes)
               const bearishMarkets = group.key === 'stocks' ? markets.filter((market) => market.watchStance === 'bearish') : []
               const regularMarkets = group.key === 'stocks' ? markets.filter((market) => market.watchStance !== 'bearish') : markets
-              return <section className="market-group" key={group.key} aria-labelledby={`market-group-${group.key}`}>
+              return <section className={`market-group${group.key === 'etfs' ? ' etf-group' : ''}`} key={group.key} aria-labelledby={`market-group-${group.key}`}>
                 <div className="market-group-heading">
                   <div className="market-group-title"><h3 id={`market-group-${group.key}`}>{group.title}</h3><span className="market-group-count">{markets.length}</span></div>
                   <p className="market-group-caption">{group.caption}</p>
