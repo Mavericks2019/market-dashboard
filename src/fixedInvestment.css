@@ -1,0 +1,72 @@
+.investment-panel { margin-top: 32px; padding-top: 26px; border-top: 1px solid #262c35; }
+.investment-heading { gap: 14px; margin-bottom: 9px; }
+.investment-heading h2 > span { color: #8c9bab; font-size: 14px; font-weight: 400; }
+.investment-refresh { display: flex; align-items: center; gap: 10px; color: #8994a4; font-size: 11px; }
+.investment-intro { margin: 0 0 20px; color: #8b96a6; font-size: 11px; line-height: 1.8; }
+.investment-warning { color: #e4aa3a; font-size: 11px; line-height: 1.8; }
+.investment-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.investment-stat { padding: 17px 20px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 11px; color: #dce3eb; background: #11151b; border: 1px solid #252b34; border-radius: 7px; text-align: left; }
+button.investment-stat { cursor: pointer; }
+button.investment-stat:hover { border-color: #3d4c5b; background: #141a21; }
+button.investment-stat.selected { border-color: #4d6d8b; background: #131b24; }
+.investment-stat > span { color: #a0adbd; font-size: 12px; }
+.investment-stat > strong { font: 600 27px/1.15 Arial, sans-serif; font-variant-numeric: tabular-nums; }
+.investment-stat > .investment-amount { color: #d7b775; }
+.investment-stat > small { color: #7d8a9b; font-size: 10px; line-height: 1.7; }
+.investment-period-stat > strong { font-size: 23px; }
+.investment-chart-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-top: 25px; }
+.investment-chart-header h3 { margin: 0; color: #dce3eb; font-size: 14px; font-weight: 550; }
+.investment-chart-header p { margin: 7px 0 0; color: #7d8a9b; font-size: 10px; line-height: 1.8; }
+.investment-chart-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.investment-chart-shell { height: 340px; width: 100%; position: relative; margin-top: 12px; }
+.investment-chart { width: 100%; height: 100%; }
+.investment-chart-empty { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; color: #8a94a3; font-size: 13px; text-align: center; pointer-events: none; }
+.investment-tooltip { position: absolute; z-index: 4; width: 225px; pointer-events: none; padding: 11px 12px; color: #cbd1d9; background: rgba(21,25,32,.97); border: 1px solid #3a424f; border-radius: 5px; box-shadow: 0 8px 20px rgba(0,0,0,.26); font-size: 11px; line-height: 1.5; }
+.investment-tooltip p { margin: 0 0 10px; color: #94a2b4; }
+.investment-tooltip > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.investment-tooltip span { color: #8392a6; }
+.investment-tooltip strong { color: #e3e8ef; font-size: 12px; font-variant-numeric: tabular-nums; }
+.investment-tooltip small { display: block; margin-top: 9px; color: #7e8c9e; font-size: 10px; }
+.investment-notes { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; color: #8b96a6; font-size: 11px; line-height: 1.8; }
+.investment-notes a { align-self: flex-start; color: #7cbae7; }
+.investment-notes summary { color: #91a8be; cursor: pointer; }
+.investment-notes details p { margin: 5px 0 0; white-space: pre-line; }
+.investment-annual-panel { margin-top: 27px; padding-top: 24px; border-top: 1px solid #262c35; }
+.investment-annual-heading { margin-top: 0; }
+.investment-annual-heading h3 > span { color: #8392a4; font-size: 12px; font-weight: 400; }
+.investment-annual-chart-shell { height: 310px; }
+.investment-annual-tooltip { width: 235px; }
+.investment-annual-tooltip strong.up { color: #f06470; }
+.investment-annual-tooltip strong.down { color: #31c981; }
+.investment-annual-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 19px; margin-top: 12px; padding: 13px 15px; color: #8f9cad; background: #11151b; border: 1px solid #252b34; border-radius: 6px; font-size: 11px; }
+.investment-annual-detail label { display: flex; align-items: center; gap: 8px; }
+.investment-annual-detail select { padding: 5px 25px 5px 8px; color: #dce3eb; background: #151b24; border: 1px solid #343d49; border-radius: 4px; font: inherit; }
+.investment-annual-detail select:focus-visible { outline: 2px solid #4ea8ff; outline-offset: 2px; }
+.investment-annual-detail b { margin-left: 5px; color: #dce3eb; font-variant-numeric: tabular-nums; font-weight: 500; }
+.investment-annual-detail b.up { color: #f06470; }
+.investment-annual-detail b.down { color: #31c981; }
+.investment-annual-detail a { margin-left: auto; color: #7cbae7; }
+.investment-year-summary { display: flex; flex-direction: column; gap: 9px; margin-top: 17px; }
+.investment-year-summary p { display: flex; align-items: baseline; gap: 15px; margin: 0; font-size: 12px; line-height: 1.8; }
+.investment-year-summary p > span { flex-shrink: 0; }
+.investment-year-summary strong { color: #b6c2d1; font-weight: 400; font-variant-numeric: tabular-nums; }
+.investment-current-year { display: flex; align-items: baseline; flex-wrap: wrap; gap: 9px; margin: 15px 0 0; padding: 11px 13px; color: #92a2b7; background: #121c27; border-left: 2px solid #6287aa; border-radius: 3px; font-size: 12px; line-height: 1.7; }
+.investment-current-year strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+.investment-annual-note { margin: 12px 0 0; color: #8b96a6; font-size: 11px; line-height: 1.8; }
+@media (max-width: 760px) {
+  .investment-panel { margin-top: 26px; padding-top: 22px; }
+  .investment-heading { align-items: flex-start; }
+  .investment-heading h2 > span { display: block; margin-top: 5px; font-size: 12px; }
+  .investment-refresh > span { max-width: 105px; text-align: right; font-size: 10px; line-height: 1.6; }
+  .investment-stats { grid-template-columns: 1fr; gap: 8px; }
+  .investment-stat { padding: 14px 16px; gap: 8px; }
+  .investment-stat > strong { font-size: 25px; }
+  .investment-period-stat > strong { font-size: 22px; }
+  .investment-chart-header { align-items: flex-start; margin-top: 20px; }
+  .investment-chart-header > div:first-child { width: 100%; }
+  .investment-chart-shell { height: 300px; }
+  .investment-annual-chart-shell { height: 285px; }
+  .investment-annual-heading h3 > span { display: block; margin-top: 5px; }
+  .investment-annual-detail { gap: 9px 13px; padding: 11px 12px; }
+  .investment-annual-detail a { margin-left: 0; }
+}

@@ -4,6 +4,7 @@ import TrendChart from './TrendChart'
 import FundamentalsTable from './FundamentalsTable'
 import IndexConstituentsPanel from './IndexConstituentsPanel'
 import HousingPanel from './HousingPanel'
+import FixedInvestmentPanel from './FixedInvestmentPanel'
 import EtfTotalReturnPanel from './EtfTotalReturnPanel'
 import { formatChinaTime, formatNewYorkTime, getCashSessionState, getSessionState } from './marketTime'
 import type { Market, Period } from './types'
@@ -31,6 +32,25 @@ const marketGroups = [
 const signed = new Intl.NumberFormat('en-US', { signDisplay: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const TROY_OUNCE_GRAMS = 31.1034768
 type GoldUnit = 'USD' | 'CNY'
+
+const rmbCurrencyPairs = {
+  USDCNY: { foreign: '美元', forward: 'USDCNY', inverse: 'CNYUSD', groupLabel: '人民币美元报价方向' },
+  EURCNY: { foreign: '欧元', forward: 'EURCNY', inverse: 'CNYEUR', groupLabel: '人民币欧元报价方向' },
+} as const
+
+function isRmbCurrencyMarket(market: Market): market is Market & { key: keyof typeof rmbCurrencyPairs } {
+  return market.key === 'USDCNY' || market.key === 'EURCNY'
+}
+
+function currencyExchangeNote(market: Market, includeDirection = false) {
+  if (!isRmbCurrencyMarket(market)) return ''
+  const { foreign } = rmbCurrencyPairs[market.key]
+  const isInverse = market.symbol.startsWith('CNY/')
+  if (!includeDirection) return isInverse ? `1 人民币可兑换的${foreign}` : `1 ${foreign}可兑换的人民币`
+  return isInverse
+    ? `1 人民币 = ${formatMarketNumber(market.price, market)} ${foreign}；数值上升表示人民币升值。`
+    : `1 ${foreign} = ${formatMarketNumber(market.price, market)} 人民币；数值上升表示人民币贬值。`
+}
 
 function formatHistoryDate(timestamp: number | null | undefined, timeZone = 'Asia/Shanghai') {
   return timestamp ? new Intl.DateTimeFormat('zh-CN', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp * 1000)) : '--'
@@ -89,7 +109,7 @@ const MarketCard = memo(function MarketCard({ market, active, onClick }: { marke
           <span>高 {formatMarketNumber(market.dayHigh, market)}</span>
         </>}
       </span>
-      {market.key === 'USDCNY' && <span className="card-note">{market.symbol === 'CNY/USD' ? '1 人民币可兑换的美元' : '1 美元可兑换的人民币'}</span>}
+      {isRmbCurrencyMarket(market) && <span className="card-note">{currencyExchangeNote(market)}</span>}
       {market.kind !== 'fund' && market.key !== 'CFETS' && <span className="card-note">{market.marketTime ? market.dataGranularity === '1d' ? `日线收盘 ${formatHistoryDate(market.marketTime, market.exchangeTimezone)}` : `报价 ${formatChinaTime(market.marketTime, true)} · 北京时间` : market.dataGranularity === 'loading' ? '正在获取报价' : '报价暂不可用'}</span>}
       {market.isStale && market.price != null && <span className="card-note warning">{market.dataGranularity === '1d' ? '分时报价暂不可用 · 显示日线' : '更新暂不可用 · 显示缓存数据'}</span>}
     </button>
@@ -103,9 +123,10 @@ export default function App() {
   const [now, setNow] = useState(new Date())
   const [goldUnit, setGoldUnit] = useState<GoldUnit>('USD')
   const [currencyDirection, setCurrencyDirection] = useState<CurrencyDirection>('USDCNY')
+  const [euroCurrencyDirection, setEuroCurrencyDirection] = useState<CurrencyDirection>('EURCNY')
 
   function selectMarket(key: Market['key']) {
-    if (key === 'HXC' || key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A') setPeriod('MAX')
+    if (key === 'HXC' || key === 'NF_DIV_LV50' || key === 'NF_DIV_LV50_A' || key === 'EURCNY') setPeriod('MAX')
     setSelectedKey(key)
   }
 
@@ -121,9 +142,9 @@ export default function App() {
       const hidden = new Set(cashOpen ? ['NQ', 'ES', 'YM'] : ['NDX', 'SPX', 'DJI'])
       return data.markets
         .filter((market) => !hidden.has(market.key))
-        .map((market) => convertCurrencyMarket(convertGoldMarket(market, goldUnit, data.fx?.rate), currencyDirection))
+        .map((market) => convertCurrencyMarket(convertGoldMarket(market, goldUnit, data.fx?.rate), market.key === 'EURCNY' ? euroCurrencyDirection : currencyDirection))
     },
-    [data, goldUnit, currencyDirection],
+    [data, goldUnit, currencyDirection, euroCurrencyDirection],
   )
   const activeQuote = useMemo(
     () => displayMarkets.find((market) => market.key === selectedKey)
@@ -135,8 +156,11 @@ export default function App() {
   const activeMarket = useMemo(() => {
     const quote = data?.markets.find((market) => market.key === activeQuote?.key)
     if (!quote) return undefined
-    return convertCurrencyMarket(convertGoldMarket(mergeQuoteAndHistory(quote, history), goldUnit, data?.fx?.rate), currencyDirection)
-  }, [data, activeQuote?.key, history, goldUnit, currencyDirection])
+    return convertCurrencyMarket(convertGoldMarket(mergeQuoteAndHistory(quote, history), goldUnit, data?.fx?.rate), quote.key === 'EURCNY' ? euroCurrencyDirection : currencyDirection)
+  }, [data, activeQuote?.key, history, goldUnit, currencyDirection, euroCurrencyDirection])
+  const activeCurrencyPair = activeMarket && isRmbCurrencyMarket(activeMarket) ? rmbCurrencyPairs[activeMarket.key] : undefined
+  const activeCurrencyDirection = activeMarket?.key === 'EURCNY' ? euroCurrencyDirection : currencyDirection
+  const setActiveCurrencyDirection = activeMarket?.key === 'EURCNY' ? setEuroCurrencyDirection : setCurrencyDirection
   const companies = useMemo(() => displayMarkets.filter((market) => market.kind === 'stock'), [displayMarkets])
   const showTotalReturn = activeMarket?.key === 'NF_DIV_LV50' || activeMarket?.key === 'NF_DIV_LV50_A'
   const futuresSession = getSessionState(now)
@@ -156,7 +180,7 @@ export default function App() {
     : (activeMarket?.kind === 'stock' || activeMarket?.kind === 'index' || activeMarket?.kind === 'etf') && activeMarket.exchangeTimezone === 'Asia/Shanghai'
       ? { phase: 'weekend', label: activeMarket.kind === 'index' ? 'A股指数' : activeMarket.kind === 'etf' ? 'ETF行情' : 'A股行情', detail: `${activeMarket.exchange} · 以行情源报价时间为准` }
     : activeMarket?.kind === 'forex'
-      ? { phase: 'weekend', label: '在岸人民币外汇', detail: '以行情源报价时间为准' }
+      ? { phase: 'weekend', label: activeMarket.key === 'EURCNY' ? '人民币外汇参考' : '在岸人民币外汇', detail: '以行情源报价时间为准' }
     : activeMarket?.kind === 'index' || activeMarket?.kind === 'stock'
     ? cashSession
     : activeMarket?.kind === 'metal' && futuresSession.phase === 'open'
@@ -244,10 +268,10 @@ export default function App() {
                     <button className={goldUnit === 'CNY' ? 'selected' : ''} onClick={() => setGoldUnit('CNY')}>CNY/g</button>
                   </div>
                 )}
-                {activeMarket.key === 'USDCNY' && (
-                  <div className="unit-control" role="group" aria-label="人民币美元报价方向">
-                    <button className={currencyDirection === 'USDCNY' ? 'selected' : ''} aria-pressed={currencyDirection === 'USDCNY'} onClick={() => setCurrencyDirection('USDCNY')}>美元 → 人民币</button>
-                    <button className={currencyDirection === 'CNYUSD' ? 'selected' : ''} aria-pressed={currencyDirection === 'CNYUSD'} onClick={() => setCurrencyDirection('CNYUSD')}>人民币 → 美元</button>
+                {activeCurrencyPair && (
+                  <div className="unit-control" role="group" aria-label={activeCurrencyPair.groupLabel}>
+                    <button className={activeCurrencyDirection === activeCurrencyPair.forward ? 'selected' : ''} aria-pressed={activeCurrencyDirection === activeCurrencyPair.forward} onClick={() => setActiveCurrencyDirection(activeCurrencyPair.forward)}>{activeCurrencyPair.foreign} → 人民币</button>
+                    <button className={activeCurrencyDirection === activeCurrencyPair.inverse ? 'selected' : ''} aria-pressed={activeCurrencyDirection === activeCurrencyPair.inverse} onClick={() => setActiveCurrencyDirection(activeCurrencyPair.inverse)}>人民币 → {activeCurrencyPair.foreign}</button>
                   </div>
                 )}
                 <div className="period-control" role="group" aria-label="走势图时间范围">
@@ -264,9 +288,9 @@ export default function App() {
               <div><span>{activeMarket.kind === 'fund' ? '净值日期' : activeMarket.key === 'CFETS' ? '数据日期' : '数据时间（北京时间）'}</span><strong>{activeMarket.kind === 'fund' || activeMarket.key === 'CFETS' ? formatHistoryDate(activeMarket.marketTime) : formatChinaTime(activeMarket.marketTime, true)}</strong></div>
               <div><span>历史起点</span><strong>{formatHistoryDate(activeMarket.historyStart, activeMarket.kind === 'stock' ? activeMarket.exchangeTimezone : 'Asia/Shanghai')}</strong></div>
             </div>
-            {(activeMarket.dataNote || activeMarket.sourceName || activeMarket.key === 'USDCNY') && (
+            {(activeMarket.dataNote || activeMarket.sourceName || isRmbCurrencyMarket(activeMarket)) && (
               <div className="market-note">
-                {activeMarket.key === 'USDCNY' && <span>{currencyDirection === 'CNYUSD' ? `1 人民币 = ${formatMarketNumber(activeMarket.price, activeMarket)} 美元；数值上升表示人民币升值。` : `1 美元 = ${formatMarketNumber(activeMarket.price, activeMarket)} 人民币；数值上升表示人民币贬值。`}</span>}
+                {isRmbCurrencyMarket(activeMarket) && <span>{currencyExchangeNote(activeMarket, true)}</span>}
                 {activeMarket.dataNote && <span>{activeMarket.dataNote}</span>}
                 {activeMarket.sourceName && (activeMarket.sourceUrl ? <a href={activeMarket.sourceUrl} target="_blank" rel="noreferrer">来源：{activeMarket.sourceName}</a> : <span>来源：{activeMarket.sourceName}</span>)}
               </div>
@@ -279,6 +303,7 @@ export default function App() {
           </div>
         )}
         {activeMarket && (activeMarket.kind === 'index' || activeMarket.kind === 'futures') && activeMarket.key !== 'CFETS' && <IndexConstituentsPanel key={activeMarket.key} indexKey={activeMarket.key} indexName={activeMarket.name} />}
+        <FixedInvestmentPanel />
         <HousingPanel />
         <FundamentalsTable companies={companies} />
       </section>

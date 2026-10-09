@@ -1,6 +1,11 @@
 import type { Market } from './types'
 
-export type CurrencyDirection = 'CNYUSD' | 'USDCNY'
+export type CurrencyDirection = 'CNYUSD' | 'USDCNY' | 'CNYEUR' | 'EURCNY'
+
+const currencyPairs = {
+  USDCNY: { forward: 'USDCNY', inverse: 'CNYUSD', foreign: '美元', currency: 'USD', forwardSymbol: 'USD/CNY', inverseSymbol: 'CNY/USD', nameSuffix: '（在岸）', englishSuffix: ' · Onshore' },
+  EURCNY: { forward: 'EURCNY', inverse: 'CNYEUR', foreign: '欧元', currency: 'EUR', forwardSymbol: 'EUR/CNY', inverseSymbol: 'CNY/EUR', nameSuffix: '', englishSuffix: '' },
+} as const
 
 export function formatMarketNumber(value: number | null, market: Market, signed = false) {
   if (value == null || !Number.isFinite(value)) return '--'
@@ -13,20 +18,28 @@ export function formatMarketNumber(value: number | null, market: Market, signed 
 }
 
 export function convertCurrencyMarket(market: Market, direction: CurrencyDirection): Market {
-  if (market.key !== 'USDCNY') return market
-  if (direction === 'USDCNY') return { ...market, unit: '人民币/美元' }
+  if (market.key !== 'USDCNY' && market.key !== 'EURCNY') return market
+  const pair = currencyPairs[market.key]
+  // A direction from another currency pair must never relabel this market.
+  if (direction !== pair.forward && direction !== pair.inverse) return market
+  if (market.symbol !== pair.forwardSymbol && market.symbol !== pair.inverseSymbol) return market
+  const isInverse = direction === pair.inverse
+  const metadata = {
+    symbol: isInverse ? pair.inverseSymbol : pair.forwardSymbol,
+    name: `${isInverse ? `人民币兑${pair.foreign}` : `${pair.foreign}兑人民币`}${pair.nameSuffix}`,
+    englishName: `${isInverse ? pair.inverseSymbol : pair.forwardSymbol}${pair.englishSuffix}`,
+    unit: isInverse ? `${pair.foreign}/人民币` : `人民币/${pair.foreign}`,
+    currency: isInverse ? pair.currency : 'CNY',
+    precision: isInverse ? 6 : 4,
+  }
+  if (market.symbol === metadata.symbol) return { ...market, ...metadata }
   const invert = (value: number | null) => value !== null && Number.isFinite(value) && value > 0 ? 1 / value : null
   const price = invert(market.price)
   const previousClose = invert(market.previousClose)
   const change = price !== null && previousClose !== null ? price - previousClose : null
   return {
     ...market,
-    symbol: 'CNY/USD',
-    name: '人民币兑美元（在岸）',
-    englishName: 'CNY/USD · Onshore',
-    unit: '美元/人民币',
-    currency: 'USD',
-    precision: 6,
+    ...metadata,
     price,
     previousClose,
     change,

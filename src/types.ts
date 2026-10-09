@@ -10,7 +10,7 @@ export interface ChartPoint {
 }
 
 export interface Market {
-  key: 'NQ' | 'NDX' | 'IXIC' | 'HXC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'NF_DIV_LV50_A' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'HSBC' | 'STAN' | 'HSTECH'
+  key: 'NQ' | 'NDX' | 'IXIC' | 'HXC' | 'ES' | 'SPX' | 'YM' | 'DJI' | 'XAU' | 'BRKB' | 'GOOGL' | 'NVDA' | 'AAPL' | 'SPCX' | 'KO' | 'MCD' | 'PDD' | 'TENCENT' | 'UNITREE' | 'VANKE' | 'NF_DIV_LV50' | 'NF_DIV_LV50_A' | 'SSE' | 'SZSE' | 'ChiNext' | 'CSI_DIV' | 'CSI_DIV_LV' | 'CSI_DIV_LV100' | 'SSE_DIV' | 'FTSE' | 'DAX' | 'KOSPI' | 'NIKKEI' | 'CFETS' | 'USDCNY' | 'EURCNY' | 'HSBC' | 'STAN' | 'HSTECH'
   symbol: string
   name: string
   englishName: string

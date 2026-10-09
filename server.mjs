@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { US_INSTRUMENTS, fetchUsQuotes, fetchUsTrend } from './us-markets.mjs'
 import { getUsCashSession } from './us-session.mjs'
 import { CFETS_INSTRUMENT, fetchCfetsTrend } from './cfets-market.mjs'
-import { CNY_INSTRUMENT, fetchCnyTrend, parseCnyQuote } from './cny-market.mjs'
+import { CNY_INSTRUMENT, EUR_CNY_INSTRUMENT, fetchCnyTrend, fetchEurCnyTrend, parseCnyQuote, parseEurCnyQuote } from './cny-market.mjs'
 import { HK_STOCKS_INSTRUMENTS, fetchHkStockTrend, fetchHkStockQuotes } from './hk-stocks.mjs'
 import { HSTECH_INSTRUMENT, fetchHstechTrend, parseHstechQuote } from './hstech-market.mjs'
 import { HXC_INSTRUMENT, fetchHxcTrend, parseHxcSinaQuote } from './hxc-market.mjs'
@@ -15,6 +15,7 @@ import { fetchFundamentals } from './fundamentals.mjs'
 import { fetchIndexConstituents, getConstituent } from './index-constituents.mjs'
 import { fetchConstituentValuations } from './constituent-valuations.mjs'
 import { fetchHousingData } from './housing-market.mjs'
+import { fetchFixedInvestmentData } from './fixed-investment.mjs'
 import { FUND_LINK_INSTRUMENTS, fetchEtfTotalReturn, fetchFundNavTrend } from './etf-total-return.mjs'
 import { createMarketScheduler } from './market-scheduler.mjs'
 
@@ -41,6 +42,7 @@ const instruments = {
   XAU: { symbol: 'XAU/USD', name: '伦敦现货金', englishName: 'Spot Gold', contract: 'Spot Gold', kind: 'metal', unit: 'USD/oz' },
   CFETS: CFETS_INSTRUMENT,
   USDCNY: CNY_INSTRUMENT,
+  EURCNY: EUR_CNY_INSTRUMENT,
   BRKB: US_INSTRUMENTS.BRKB,
   GOOGL: US_INSTRUMENTS.GOOGL,
   NVDA: US_INSTRUMENTS.NVDA,
@@ -502,7 +504,7 @@ async function fetchSinaQuotesRequest({ force = false } = {}) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 6_000)
   try {
-    const symbols = ['hf_NQ', 'hf_ES', 'hf_YM', 'hf_XAU', 'gb_ixic', 'gb_$hxc', 'rt_hkHSTECH', 'fx_susdcny', 'b_UKX', 'b_DAX', 'b_KOSPI', 'b_NKY', 'sh000001', 'sz399001', 'sz399006', ...Object.values(MAINLAND_INSTRUMENTS).map((item) => item.sourceSymbol)]
+    const symbols = ['hf_NQ', 'hf_ES', 'hf_YM', 'hf_XAU', 'gb_ixic', 'gb_$hxc', 'rt_hkHSTECH', 'fx_susdcny', 'fx_seurcny', 'b_UKX', 'b_DAX', 'b_KOSPI', 'b_NKY', 'sh000001', 'sz399001', 'sz399006', ...Object.values(MAINLAND_INSTRUMENTS).map((item) => item.sourceSymbol)]
     const response = await fetch(`https://hq.sinajs.cn/list=${symbols.join(',')}`, {
       signal: controller.signal,
       headers: {
@@ -574,7 +576,7 @@ async function fetchSinaQuotesRequest({ force = false } = {}) {
       }
     }
     for (const [key, parse] of [
-      ['HXC', () => parseHxcSinaQuote(text)], ['HSTECH', () => parseHstechQuote(text)], ['USDCNY', () => parseCnyQuote(text)],
+      ['HXC', () => parseHxcSinaQuote(text)], ['HSTECH', () => parseHstechQuote(text)], ['USDCNY', () => parseCnyQuote(text)], ['EURCNY', () => parseEurCnyQuote(text)],
       ...Object.entries(MAINLAND_INSTRUMENTS).map(([key, instrument]) => [key, () => parseMainlandStockQuote(text, instrument)]),
     ]) {
       try { quotes.set(key, parse()) } catch { /* A missing member does not discard the other fresh quotes. */ }
@@ -609,6 +611,7 @@ function quoteOnlyMarket(key, quote) {
 async function loadMarketHistory(key, period) {
   if (key === 'CFETS') return fetchCfetsTrend(period)
   if (key === 'USDCNY') return fetchCnyTrend(period)
+  if (key === 'EURCNY') return fetchEurCnyTrend(period)
   if (key === 'HXC') return fetchHxcTrend(period)
   if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key)) return fetchFundNavTrend(key, period)
   if (Object.hasOwn(HK_STOCKS_INSTRUMENTS, key)) return fetchHkStockTrend(key, period)
@@ -705,7 +708,7 @@ async function fetchFundQuote(key) {
     dataNote: '按交易日公布单位净值，无盘中报价；时间为原始净值日期。' })
 }
 
-const sinaKeys = ['NQ', 'ES', 'YM', 'XAU', 'IXIC', 'HXC', 'HSTECH', 'USDCNY', 'FTSE', 'DAX', 'KOSPI', 'NIKKEI', 'SSE', 'SZSE', 'ChiNext', ...Object.keys(MAINLAND_INSTRUMENTS)]
+const sinaKeys = ['NQ', 'ES', 'YM', 'XAU', 'IXIC', 'HXC', 'HSTECH', 'USDCNY', 'EURCNY', 'FTSE', 'DAX', 'KOSPI', 'NIKKEI', 'SSE', 'SZSE', 'ChiNext', ...Object.keys(MAINLAND_INSTRUMENTS)]
 const scheduler = createMarketScheduler({ instruments, makePlaceholder: placeholderMarket, loadHistory: loadMarketHistory,
   quoteSources: [
     { id: 'sina', keys: sinaKeys, load: async ({ force }) => { const value = await fetchSinaQuotes({ force }); return { ...value, quotes: new Map([...value.quotes].map(([key, quote]) => [key, quoteOnlyMarket(key, quote)])) } } },
@@ -757,6 +760,15 @@ app.get('/api/constituent-valuations', async (request, response) => {
     response.json(await fetchConstituentValuations(companies, { force: request.query.refresh === '1' }))
   } catch {
     response.status(502).json({ error: '成分股估值暂时不可用，请稍后刷新' })
+  }
+})
+
+app.get('/api/fixed-investment', async (request, response) => {
+  response.set('Cache-Control', 'no-store')
+  try {
+    return response.json(await fetchFixedInvestmentData({ force: request.query.refresh === '1' }))
+  } catch {
+    return response.status(502).json({ error: '固定资产投资数据暂不可用，请稍后重试' })
   }
 })
 
@@ -814,7 +826,7 @@ app.get('/api/markets', async (request, response) => {
     const quote = usQuotes.get(key) || quotes.get(key)
     if (result.status === 'rejected') {
       if (quote) return [quoteOnlyMarket(key, quote)]
-      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key) || Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['HXC', 'CFETS', 'USDCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
+      if (Object.hasOwn(FUND_LINK_INSTRUMENTS, key) || Object.hasOwn(MAINLAND_INSTRUMENTS, key) || Object.hasOwn(DIVIDEND_INDEX_INSTRUMENTS, key) || ['HXC', 'CFETS', 'USDCNY', 'EURCNY', 'HSBC', 'STAN', 'TENCENT', 'HSTECH', 'KO', 'MCD', 'NVDA', 'AAPL', 'PDD'].includes(key)) return [{
         ...instruments[key], key, price: null, previousClose: null, change: null, changePercent: null,
         dayHigh: null, dayLow: null, marketTime: null, historyStart: null, historyEnd: null,
         exchangeTimezone: instruments[key].exchangeTimezone || 'Asia/Shanghai', dataGranularity: 'unavailable', points: [],

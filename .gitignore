@@ -13,5 +13,8 @@ Thumbs.db
 miniprogram/project.private.config.json
 data/cfets-history-cache.json
 data/housing-history-cache.json
+data/fixed-investment-history-cache.json
+data/runtime-diagnostics/
+data/startup-backup/
 *-preview.jpg
 *-preview.png

@@ -1,14 +1,32 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { appendFileSync, closeSync, openSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
+import { promisify } from 'node:util'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const port = 4174
 const healthUrl = `http://127.0.0.1:${port}/api/health`
 const log = (message) => appendFileSync(path.join(root, 'startup.log'), `${new Date().toISOString()} ${message}\n`)
+const execFileAsync = promisify(execFile)
+
+async function startScheduledSupervisor() {
+  if (process.platform !== 'win32') return false
+  try {
+    await execFileAsync('schtasks.exe', ['/Query', '/TN', 'Market Dashboard'], { windowsHide: true })
+  } catch {
+    return false
+  }
+  await execFileAsync('schtasks.exe', ['/Run', '/TN', 'Market Dashboard'], { windowsHide: true })
+  log('Requested the Windows dashboard supervision task.')
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (await healthy()) return true
+    await delay(500)
+  }
+  throw new Error('Dashboard supervision task started, but health check failed. See startup.log.')
+}
 
 async function healthy() {
   try {
@@ -31,6 +49,7 @@ function portInUse() {
 }
 
 async function main() {
+  if (await startScheduledSupervisor()) return
   if (await healthy()) {
     log('Already running; no duplicate process started.')
     return
